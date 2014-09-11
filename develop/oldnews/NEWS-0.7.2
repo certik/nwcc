@@ -1,0 +1,164 @@
+May 25 2007
+===========
+
+More PowerPC stuff fixed. Now integer to floating point
+conversion should mostly work for 64bit as well. But
+certainly I will have to write more test cases to find
+more exotic problems than those currently detected by
+the toy programs in the test suite.
+
+I fixed a couple of SPARC bugs as well but quickly got
+bored.
+
+
+May 24 2007
+===========
+
+I did 4 or so hours of PowerPC development today. I was
+initially only going to fix the 64bit floating point
+support, but as it turned out, the 32bit version too was
+full of bugs.
+
+So after writing lots and lots of long long, initializer
+and floating point conversion fixes, I finally got to the
+point where I could do the 64bit fp stuff I was
+interested in.
+
+Then I fixed some bugs, and some more, and even more
+still, and now an hour or two later it still isn't
+working at all.
+
+nwcc 0.7.3 will really be a really nice floating point
+bugfix release. I wonder how much stuff I will have to
+fix on SPARC.
+
+
+May 19 2007
+===========
+
+I spent another couple of hours ``finalizing'' that AMD64
+fp stuff. It is completely obvious that nobdoy could ever
+have used the old fp ``support'' to do any fp programming
+which makes any sense at all.
+
+But maybe now it is possible.
+
+
+May 18 2007
+===========
+
+I fixed lots of x87 floating point bugs. Interestingly
+even x87 comparisons with branches were completely wrong.
+Now they mostly work.
+
+There were also some long long bugs on x86 which were also
+fixed.
+
+Then I spent another 4 or so hours making stuff work on
+AMD64 as well. As it turns out, SSE support also was
+completely broken. Most notably it didn't have comparison
+at all.
+
+It really was a sad state of affairs, but now some stuff
+works. I hope other architectures are not as full of bugs
+in this area.
+
+
+May 14 2007
+===========
+
+After two more weeks of nwbintools development, the nwasm
+assembler can now apparently assemble all nwcc output
+correctly.
+
+So I returned to nwcc development. My current sub-project
+is to get floating point support on x86 and AMD64 to work
+right.
+
+The primary problem is that the x87 register stack
+architecture completely sucks. I have previously mainly
+treated x87 registers much like ordinary registers, with
+a bit of ad-hoc glue to fix some of the most obvious
+bugs, but it seems to me that x87 support was never
+really usable at all.
+
+Thus I've trashed all of the old x87 register handling
+stuff. The replacement tries to use them as little as
+possible; Registers are only loaded before an operation
+takes place, and freed immediately afterwards.
+
+This means that an expression such as:
+
+	float	foo, bar;
+	...
+	foo = bar + bar * foo;
+
+will yield something like the following:
+
+	fld dword [bar]
+	fld dword [foo]
+	fmulp st1
+	fstp dword [ebp - something]
+	fld dword [bar]
+	fld dword [ebp - something]
+	faddp st1
+	stp dword [ebp - something2]
+	fld dword [ebp - something2]
+	fstp dword [foo]
+
+As you can see, there are lots of unnecessary load/store	
+operations, because nwcc always keeps temporary x87
+floating point results on the stack.
+
+Obviously there will be room for improvements, but right
+now I just want it to work at all, which it never really
+did.
+
+Many things already work better than before, but there's
+still work to do, especially (I guess) on AMD64.
+
+
+April 13 2007
+=============
+
+After three months since the last nwcc release, I am happy
+to announce a new version: 0.7.2!
+
+This is a very minor release (I considered naming it
+0.7.1.1) featuring three new features:
+
+	- Linux/SPARC64 support
+	- OpenBSD/AMD64 support
+	- Support for the new x86 assembler nwasm
+
+(Note that it has ONLY BEEN TESTED ON x86!!! If other
+platform support is broken, please try with 0.7.1 and
+contact me.)
+
+Note that the Linux/SPARC port isn't complete yet. It is
+capable of compiling basic integer programs, but software
+involving functions which return (or take as arguments)
+structures and floating point values probably won't work.
+
+That's because it seems the Linux ABI differs from the
+Solaris one in some respects, and I haven't gotten around
+to fixing that stuff yet.
+
+The new assembler for x86 - nwasm
+(http://nwbintools.sourceforge.net) - is part of the new
+nwbintools package which I have been writing on the past
+three months (that's where the development part of my
+spare time went, in case you've been wondering why there
+were no nwcc releases in such a long time.)
+
+It is a bit faster than nasm, but of course much buggier
+and much less complete. To use nwasm or gas instead of
+nwasm, there are three options:
+
+	- Set the NWCC_ASM environment variable to nwasm
+	  (or gas)
+
+	- Supply the command line option -asm=nwasm
+
+	- Add ``asm = nwasm'' to ~/.nwcc/nwcc.conf
+

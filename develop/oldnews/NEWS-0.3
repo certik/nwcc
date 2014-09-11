@@ -1,0 +1,469 @@
+Mar 3
+=====
+
+Fixed various embarrassing bugs and added a custom made getopt()-like argument
+processing function, which appears to work OK.
+
+Mar 2
+=====
+
+Made register allocator use esi and edi, added type conversions for return
+statements, added long long function return statements, did various bitwise
+operators for long long, fixed various bugs.
+
+Now I still need to do left and right shifting and variadic function support
+for long long. As soon as long long works properly, it's probably time to make
+a 0.4 release.
+
+Turns out all test programs work on OpenBSD 3.7 now (thanks to Graue
+[www.oceanbase.org] for providing OpenBSD access!)
+
+
+Mar 1
+=====
+
+I read that gcc 4.1 has stack protection support today. So that got me thinking
+about this topic, and though I don't know how they do it, I instantly got an idea
+of how it can be done: Just save the return address somewhere safe and, upon
+executing a ``ret'' instruction, compare the return address with the saved one!
+
+So I played with this for 20 minutes or so and came up with an nwcc
+implementation, which seems to work.
+
+
+stdnrw/nwcc_ng [134]> cat new.c
+void
+scpy(char *dest, char *src) {
+        while ((*dest++ = *src++) != 0)
+                ;
+}
+
+int
+main(void) {
+        char    buf[10];
+        scpy(buf, "Hello world how is it going");
+        puts("goodbye cruel world");
+	return 0;
+}
+
+stdnrw/nwcc_ng [0]> ./nwcc new.c
+new.c:11: Warning: Call to `puts' without declaration (illegal in C99)
+        puts("goodbye cruel world");
+        ^^^^ here
+/var/tmp/cpp81.cpp - 0 error(s), 1 warning(s)
+stdnrw/nwcc_ng [0]> ./a.out
+goodbye cruel world
+Segmentation fault (core dumped)
+stdnrw/nwcc_ng [0]> ./nwcc new.c -stackprotect
+new.c:11: Warning: Call to `puts' without declaration (illegal in C99)
+        puts("goodbye cruel world");
+        ^^^^ here
+/var/tmp/cpp81.cpp - 0 error(s), 1 warning(s)
+stdnrw/nwcc_ng [0]> ./a.out
+goodbye cruel world
+ERROR: Stack corruption detected, cannot continue program
+       execution. Calling abort()
+Abort (core dumped)
+stdnrw/nwcc_ng [0]>
+
+
+Mar 1
+=====
+
+Turns out I hadn't been paying attention to alignment for variables on the stack
+and in the data and bss segments. The thing that brought this to my attention is
+that structs are implicitly assumed to begin at a word aligned address, but there
+was no code that explicitly spelled this out. And likewise there was no code for
+aligning anything else :-( Thanks to Robert Oestling for talking about struct
+alignment to me. This should be fixed now. I'll do relational and equality
+operators for ``long long'' tonight.
+
+
+Feb 27
+======
+
+Implemented static/indirect loads and stores, negation and modulo for long
+long. Some expressions involving an indirect long long load and another long
+long load (indirect or not) cause a crash in the register allocator. I suspect
+it may be due to the sheer number of registers required to deal with those
+multi-register objects. Perhaps I should finally make the allocator use esi/edi
+as well before I'll look into debugging this ...
+
+
+Feb 27
+======
+
+Added a provisionary installation procedure. Now libnwcc is linked in
+automatically. The installation is hardcoded to /usr/local/nwcc for now.
+
+
+Feb 26
+======
+
+Implemented signed and unsigned long long multiplication, which seems to
+work. Now I still need to do static and indirect long long loads and stores,
+bitwise, equality and relational operations and a lot of other stuff that I
+cannot remember now.
+
+
+Feb 25
+======
+
+Mostly integrated the long long stuff (as there is currently still no
+installation procedure for nwcc, one has to link with libnwcc.o manually in
+order to use long long division) and implemented signed long long division
+and long long negation.
+
+
+Feb 24
+======
+
+Got the unsigned long long division code to work (signed long long is very
+simple to implement - it just requires testing the sign bit and doing
+negations of negative values if necessary, and can use the unsigned code.)
+
+Due to time constraints I haven't finished integrating it into nwcc yet,
+but I'm uploading this now so that I 1) have a backup online and 2) can
+brag about having gotten it done in the NEWS file :-)
+
+
+Feb 24
+======
+
+I just noticed that the previous version I uploaded contains some stupid
+debugging messages :-( ... So that gives me an opportunity to upload an
+update.
+
+I'm currently working on division support for ``long long''. While the x86
+instruction set supports addition and subtraction for it, division and
+multiplication are not supported. They have to be implemented entirely in
+software in form of some arbitrary-precision-like routines. gcc has
+functions for doing this in libgcc, but I don't like such dependencies so
+I figured I should roll my own. In fact, I've long considered doing
+arbitrary precision arithmetic for constant expression evaluation, so that
+code could be doubly useful. Using it for expression evaluation would
+remove dependencies on host machine properties and thus help enable cross-
+compilation.
+
+
+Feb 22
+======
+
+Implemented that free_pregs_vreg() idea, fixed arithmetic conversions to
+long long, implemented addition for long long. So the following works now:
+
+#include <stdio.h>
+
+int
+main(void) {
+	long long	foo = 123ll;
+	long long	bar = 456; /* note conversion int->long long! */
+	long long	baz;
+
+	baz = foo + bar;
+	printf("%lld\n", baz);
+}
+
+I may implement further arithmetic operations later today, but I need to take
+a break now.
+
+
+Feb 21
+======
+
+I couldn't resist and did some more long long work. Now it should be possible
+to load a llong into two registers, to convert to/from smaller integer types
+(though floating point isn't handled yet), to load/store a llong from/to
+the stack, and to push it onto the stack for function calls. In fact, the
+following program already works:
+
+#include <stdio.h>
+
+int
+main(void) {
+	long long	foo = 123ll;
+	printf("%lld\n", foo);
+}
+
+Unfortunately, I know of no way to use glibc's LLONG_MAX/LLONG_MIN currently.
+This is because nwcc invokes cpp with -U__GNUC__ to disable GNU-specific code
+in the headers, which also disables C99 stuff like those long long macros. It
+seems the easiest solution to coexist with gcc-biased libraries is simply to
+be sufficiently GNU-compatible. They came first so I have to adhere to their
+rules. I don't really mind this, and I already have some support for various
+__builtin*() functins, __attribute__(), typeof() and various other GNU
+keywords. I'll need gcc-style inline assembly in any case, as well (though I
+will support NASM syntax too and handle AT&T code by converting it to NASM.)
+
+As for the long long stuff - the next steps will have to be: ensuring that the
+extra registers cause no ``register leaks'' (i.e. are always free_preg()'ed
+properly); perhaps adding free_preg_vreg() to hide the number of registers
+mapped to a vreg; changing vreg_faultin_protected() as necessary and perhaps
+adding reg_set_unallocatable_vreg(); making emit_load/store-static/indir/
+cope with it; adapting the register-to-stack temporary saving code; doing all
+arithmetic operations for long long. Not to mention function return values.
+This isn't a trivial job.
+
+
+Feb 21
+======
+
+Another step towards implementing long long: I changed the icode layer such
+that a vreg can now be associated with multiple pregs. There may be more to
+come later today. I'm hoping the remaining work doesn't affect the frontend
+too much.
+
+
+Feb 20
+======
+
+Tried nwcc with valgrind and found one (0001) off-by-one error. Now nwcc
+seems to be valgrind-clean, as far as memory corruption bugs are concerned.
+gcc 3.3 yields a lot of valgrind errors but has much better memory management.
+decl.c (2100 lines, 17 includes) with nwcc:
+
+==26784== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+==26784== malloc/free: in use at exit: 3996921 bytes in 79989 blocks.
+==26784== malloc/free: 83169 allocs, 3180 frees, 4044117 bytes allocated.
+==26784== For a detailed leak analysis,  rerun with: --leak-check=yes
+==26784== For counts of detected errors, rerun with: -v
+
+and with gcc:
+
+==26769== ERROR SUMMARY: 50 errors from 3 contexts (suppressed: 751 from 1)
+==26769== malloc/free: in use at exit: 474435 bytes in 1265 blocks.
+==26769== malloc/free: 10177 allocs, 8912 frees, 3024673 bytes allocated.
+==26769== For a detailed leak analysis,  rerun with: --leak-check=yes
+==26769== For counts of detected errors, rerun with: -v
+
+I'll be the first to admit that this area of nwcc still needs work :-)
+
+(And, believe it or not, it's not the only area that still needs work.)
+
+gcc is ahead of me in terms of speed as well, but much less so.
+
+
+Feb 20
+======
+
+Today I looked into implementing ``long long'' and the very first thing I
+realized was: This requires some icode redesign, as a llong at least on x86
+takes more than one GPR, and before I can do this I absolutely need to get
+rid of the icode setitem nonsense. Some background: When I started writing
+the icode (intermediate code) layer and backend in July 2005, I didn't pay
+much attention to good icode design. One of the very first icode instructions
+I did then was INSTR_SETITEM. This instruction just tells the backend which
+item the next instruction should operate on, i.e. to add two numbers you'd
+do
+
+    icode_make_setitem(dest);
+    icode_make_add(src);    
+
+This wasn't beautiful but it worked, so I kept it. Long story short, this
+stuff got out of control; Sometimes I'd forget setting the current item
+correctly, which resulted in obscure bugs. Morever, this pseudo instruction
+served a second purpose - propagating vreg-to-preg mapping changes to the
+backend - and became a very integral part of everything. For a given program,
+about half of all generated icode instructions were INSTR_SETITEM, most of
+them redundant and just for communcating those mapping changes.
+
+So today I removed all of that implicit destination item stuff and replaced
+it with explicit dest,src instructions. A ``diff'' of all files with the
+versions before the change yields 1200 lines. This really touched a LOT of
+stuff but it works!!! Sometimes I change one line to fix a bug and that
+line will break ten other things and will be very hard to track down. And
+today I changed a ton of stuff and had to remove only 2 or so OBVIOUS bugs
+before the thing worked as it did before. As a side effect, I got to reread
+some of the old code and found a bug in pointer arithmetic that way. Strange
+thing it never surfaced before ....
+
+Well, the icode changes have one drawback: Every icode instruction is now
+twice as big as before. But I'll improve memory usage later. The fact that
+the setitem stuff is gone now also means that I can now better do code
+analysis and optimization.
+
+
+Feb 19
+======
+
+I tried Anders Gavare's gxemul (http://gavare.se/gxemul/) with nwcc. That
+showed me one bug in declaration parsing and one in lexical analysis, which
+I've fixed. It looks like many if not most files compile now (if one takes
+care of the problem that glibc doesn't define int64_t if one compiles with
+__GNUC__ disabled!) but I'm getting tons and tons of assembler errors for
+most of them; This is because gxemul makes very heavy use of ``long long'',
+which is properly supported by nwcc only lexical-analysis- and parsing-wise,
+thus code generation for it is of course not correct yet. Maybe it is really
+time to do ``long long'' now. Getting a huge project like gxemul to compile
+would certainly help greatly with further nwcc debugging.
+
+
+Feb 19
+======
+
+Fixed some severe bugs in bit shifting and in copying from/to  foo->bar  if
+bar is a struct (forgot offsets in emit_copystruct(), duh!) Now nwcc-compiled
+rcli.c and rserv.c work perfectly, as far as I can see.
+
+You can't believe how frustrating it is when you fix a bug and everything
+seems to work and you're about to upload the new version, but then you find
+that nwcc cannot compile itself anymore because the fix uncovered other 
+bugs. I have to admit this testing really reveals a lot of problems even
+though it isn't fun, however (and the register allocation debugging output
+saved me once more!)
+
+
+Feb 18
+======
+
+Added support for cpp's -D and -I options. It's really unfortunate that I
+have to deal with cpp/NASM/ld options as well :-( This stuff is ugly and
+ad-hoc, uses static arrays, and I should make it so that support for other
+options can be added easily. However, that can wait.
+
+I hope I'll be more productive on the next couple of days because as soon
+as nwcc is really usable, I can look into spending time on other projects
+as well. It would be cool to write an operating system plus virtualization
+software to go with it using nwcc.
+
+(By the way, I currently do not have access to Solaris/x86 and NetBSD/x86,
+so if you have one of those and could give me a shell account on it, please
+contact me so that I can port nwcc to it.)
+
+
+Feb 16
+======
+
+Fixed various bugs relating to compound assignment operators, tentative
+declarations and below-word-sized function parameters. There is only a
+single file left of my IRC client that nwcc cannot compile. However, the
+rule that every single nontrivial program needs immense compiler debugging
+to make it work still applies :-(. Two trivial networking programs of mine,
+rcli.c and rserv.c (~500 lines of code each), compile now but yield code
+that is obviously full of bugs (though the latter is at least partially
+functional.) This is really frustrating because it demonstrates once again
+just how much time is wasted with debugging.
+
+The hardest part of this project is never to give up despite of what seems
+like an infinite number of bugs buried in a very finite amount of code. 
+
+
+Feb 14
+======
+
+Turns out NASM performs NO structure member alignment for you. Whoops. I
+suppose an x86 programmer can make a fine living using only words - words for
+ints, words for longs, words for pointers - only words and nothing else. Well,
+I've fixed this and hope it works correctly now. At least the incorrect
+``struct stat'' layout that made me aware of this problem seems to be correct
+now.
+
+
+Feb 14
+======
+
+I'm having a lot of unbacked vreg load problems when attempting to compile
+some of my software using nwcc. A vreg always needs to be backed by something-
+a variable (int x;), a constant (123), a structure (foo.x), a pointer (*p),
+a register (eax) or some anonymous stack storage. So if we ever encounter a
+load from a vreg that is not backed by any of these memories, that is a bug,
+because it means that data is not saved anywhere. Usually this means that
+the vreg was backed by a register and that register was incorrectly used for
+some other purpose without saving it, such that the data for that vreg is
+lost. I have added some debugging output for register allocation and it's
+already looking VERY promising. An example (I added line numbers on the left 
+side so that I can better comment on it):
+
+
+( .... lots of output snipped .... )
+1        FREE eax [was mapped [vr 0x81d6058: eax,4 bytes,type=125] ]
+2        ALLOC eax [was mapped [vr 0x81d6058: eax,4 bytes,type=125] ]
+3                eax=1 <-> 0x81d6058     ax=0    ah=0    al=0
+4                ebx=0 <-> 0x81d6180     bx=0    bh=0    bl=0
+5                ecx=0   cx=0    ch=0    cl=0
+6                edx=0   dx=0    dh=0    dl=0
+7
+8        [vr 0x81d6300: (const),4 bytes,type=125] -> [reg eax]
+9        ALLOC ebx [was mapped [vr 0x81d6180: (const),4 bytes,type=125] ]
+10               eax=1 <-> 0x81d6300     ax=0    ah=0    al=0
+11               ebx=1 <-> 0x81d6180     bx=0    bh=0    bl=0
+12               ecx=0   cx=0    ch=0    cl=0
+13               edx=0   dx=0    dh=0    dl=0
+14
+15       [vr 0x81d6058: INVALID,4 bytes,type=125] -> [reg ebx]
+BUG: load from unbacked vreg 0x81d6058
+calling abort()
+No valid files to link.
+
+Here we have such an unbacked load and you'll notice that my debugging output
+already correctly detects the invalid register in advance: Line 15 says that
+vreg_faultin() is attempting to load vreg 0x81d6058, which is invalid because
+it is not backed by anything, into register ebx. In order to find out what
+happened, we just need to go back and follow the history for vreg 0x81d6058.
+Line 1 of the excerpt shows that our vreg was mapped to (i.e. loaded into) 
+register eax, but then that register was freed and then allocated for a
+different purpose! Line 8 shows for which purpose eax was allocated: It was
+allocated in order to load a constant number into it. Evidently, when freeing
+the register used by 0x81d6058, its contents were never saved on the stack,
+because otherwise it wouldn't be unbacked now. So in order to find the
+problem, one just needs to find the bad free_preg() that didn't save the
+vreg!
+
+The solution is as simple as
+
+if (r->vreg == (void *)0x81d6058) {
+     abort();
+
+... in free_preg(). Et voila, gdb's stack trace shows that the problem was
+a bad free_preg() in ctrl_to_icode()! I suspect I will not really be having
+a lot of fun with this stuff because there shouldn't be too many register
+bugs left, but the debugging stuff took no longer than half an hour to
+write and has already paid off.
+
+
+Feb 13
+======
+
+I said on the website that nwcc should be able to deal with at least some
+medium sized programs now ... I'll have to take that back ;-). Of course,
+*every* untested program with more than 500 lines of code needs *extensive*
+compiler debugging before it will work. I've just been struggling for a
+good three hours to find out why this tiny piece of useless code didn't
+work:
+
+   (short)1 << (2 % 3)
+
+Basically, the problem was that a 32bit register allocation, e.g. for eax
+would not invalidate references to sub-registers, such that a subsequent
+reference to ax may still be assumed to be valid (even though eax and
+thus ax too is now taken by someone else.)
+
+I guess the recent success made me way too overconfident. The sad truth is
+that there are a *LOT* of bugs left that need *VERY*  intense debugging
+taking *MANY* hours of my precious time for at least a month or two to
+come.
+
+
+Feb 13
+======
+
+Today is a historical date. nwcc can now compile itself correctly: The
+resulting binaries can compile nwcc again, and the result of that is
+capable of passing the entire test suite;
+
+    1. Compile nwcc using gcc
+    2. Compile nwcc using nwcc (see 1.)
+    3. Compile nwcc using nwcc (see 2.)
+    4. Run test.sh using nwcc (see 3.)    
+
+The most important step here is step 3 because it exercises a LOT of code
+generated by nwcc. Step 4 only verifies that the code generated by step 3 is
+at least mostly correct.
+
+I feel this accomplishment justifies a version bump to 0.3 and a maturity
+status bump to beta. Bug reports are now more welcome than ever before
+because there don't seem to be *that* many obvious bugs anymore!
+
+(A history of some of the things that were done since Jan 21 can be found
+in the file NEWS-0.2.)
+

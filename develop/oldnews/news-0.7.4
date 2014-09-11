@@ -1,0 +1,296 @@
+Feb 16 2008
+===========
+
+Today I mostly finished the SPARC PIC stuff. Finished
+as in, it works for my two test cases and I don't know
+of any further bugs (though there may well be some).
+
+That SPARC work I did brought up an interesting problem;
+GNU headers provided by gcc! nwcc unfortunately still
+prefers to use gcc's preprocessor if available, and
+therefore it also used gcc's own set of system headers
+after processing with the "fixincludes" script, on
+systems with headers that are considered dubious/wrong
+by GNU.
+
+I noticed this because the GNU versions do not work with
+pthreads "out of the box", whereas the system ones do.
+I presume there is a way to turn this on in the GNU
+headers too, e.g. by setting some feature selection
+macro, but I DO NOT WANT to use GNU headers.
+
+Therefore I just turned off that GNU stuff by passing
+-nostdinc and -I/usr/include to cpp. This may not be
+fully correct, and was hastily written, but it does
+appear to work so far.
+
+Also, I only did this on Solaris/SPARC, since I guess
+modern Solaris headers are really aware enough of gcc
+to avoid the need for such fixincludes kludgery
+anymore. IRIX and AIX may be worse, so I'm not going to
+change them yet.
+
+Some other things I have to do now:
+
+	- Try PIC/TLS in yasm on AMD64/x86
+	- Try TLS on FreeBSD/x86
+	- Support PIC+TLS coexistence on x86/AMD64
+	- (Maybe) Support PIC+TLS on MIPS
+
+AIX does PIC by default, and totally differently, so I
+won't touch that. There's probably some stuff to do
+about creating library archives also, but I'll do that
+later.
+
+
+Feb 12 2008
+===========
+
+Some more PIC fixes. I've also started writing PIC
+and TLS for yasm/nasm, but this is really frustrating
+because nasm does not support this in the same
+flexible way as yasm (size/type directives), and yasm
+only does it properly in recent versions, and those
+don't even build on my old Linux development system.
+
+I've started some SPARC support for PIC. I hope this
+works better than TLS, which as I said doesn't work
+with the default Solaris linker and affects gcc too.
+
+
+Feb 11 2008
+===========
+
+I was about to make a new release - 0.7.5 - when it
+occured to me that just SPARC fixes (and some others
+too) aren't interesting enough to make a release for.
+
+So I decided to give in and write the long-awaited
+support for PIC (position-independent code) and TLS
+(thread-local storage). These seem to be working on
+AMD64, though TLS variables in PIC code don't work
+yet. Also, PIC seems to be working on x86, but TLS
+has not been tested yet.
+
+I've so far only done gas support for x86/AMD64, so
+yasm/nasm support for x86/AMD64 (thanks to Peter
+Johnson for implementing the needed TLS yasm
+features for me!), as well as SPARC, MIPS and PPC
+support remain to be done.
+
+Another thing is that I have already written the
+TLS stuff for SPARC, but it apparently doesn't work
+because of linker bugs. This affects gcc too.
+
+May take another week or two before it's universally
+working. Then I shall try some real-world libraries
+and call it a new nwcc version.
+
+
+Jan 27 2008
+===========
+
+Some floating point fixes on x86, some more sanity
+checking mostly in declarations, and some
+preprocessor fixes. I'm considering making nwcpp
+usable as a library that is linked into nwcc, for
+performance mostly, but that probably isn't
+something I should do just yet.
+
+
+Jan 13 2008
+===========
+
+SPARC ABI support is now much better looking. There
+are still some bugs, but a lot less than before. I
+also fixed some function pointer bugs.
+
+
+Jan 06 2008
+===========
+
+Some more fixes. There's still a lot to do. Time to
+upload another snapshot though.
+
+
+Jan 05 2008
+===========
+
+I've been fixing some more SPARC issues related to
+all things argument passing; Floating point and
+excess args were handled wrongly. I still have to
+test mixing of integer arguments (especially small
+ones) and floating point arguments some more.
+
+Also, I think struct-by-value and union-by-value
+are done wrongly; I currently let the callee copy
+the struct, but having looked over the SPARCv9 ABI
+document again, it seems to work the other way
+around.
+
+If I change that one, I can probably also pass
+small structs in registers to get even better Sun
+ABI compatibility.
+
+
+Dec 29 2007
+===========
+
+I have been fixing lots of SPARC ABI bugs. It is
+totally amazing to see how much stuff (particularly
+floating point) isn't working. I've been led from
+one bug to the next again and again.
+
+Whenever I wrote a test case to reproduce one
+particular bug, the surroundings of that test
+exposed another unknown bug ;-)  So I went and fixed
+it, and was lead to still other bugs.
+
+Lots of floating point ABI conventions were not met;
+They were not properly passed in registers/on the
+stack, and the parameter save area was not handled
+correctly. Also structs/unions passed by value
+destroyed other registers and apparently in some
+cases still do.
+
+Floating point passed on the stack still isn't
+compatible with Sun's CC, and there are long double
+issues and other stuff.
+
+Guess it will take another two or three months 
+before the RISC architectures are supported as
+correctly as x86/AMD64, and even then they are all
+still not correct enough :-(
+
+
+Dec 25 2007
+===========
+
+Been doing some more SPARC debugging. Now nwcc/
+SPARC can compile gtar, wget and coreutils, where
+at least the former two actually seem to work.
+
+
+Dec 12 2007
+===========
+
+OK, wasn't working too well. With two more bugs
+fixed, though, it does appear to work on SPARC
+at least. I haven't yet tested indirect struct
+access of the form
+
+	(*foo).bar
+
+instead of
+
+	foo->bar
+
+... which is represented differently. Also, PPC
+and MIPS still need testing. I'm fairly sure
+at least PPC needs more work.
+
+
+Dec 12 2007
+===========
+
+Spent some time writing the missing support for
+large offsets on RISC architectures. This does
+seem to work, but it still needs testing on all
+of the target archs.
+
+This stuff can also be used as a basis for PIC
+and TLS code support, however, it will probably
+take some time before I attempt those.
+
+
+Dec 04 2007
+===========
+
+I've been debugging some more minor problems, and a
+major one or two as well.
+
+In addition, I implemented C99 style for loops, as
+in
+
+	for (int i = 0; i < 5; ++i) {
+
+This has taken me a considerable amount of time
+because control structures (at least in nwcc) are
+unspeakably painful to deal with. I still do not
+have a lot of confidence into this stuff, but at
+least the new test case (tests/c99for.c) is working.
+
+This reminds me that I should put some effort into
+better C89/C99/GNU C separation one of these days
+... (e.g. C99 rules for usual integral conversions
+and better warning messages)
+
+
+Nov 17 2007
+===========
+
+After more than five months of extensive debugging,
+I'm finally releasing nwcc 0.7.4!
+
+I have finally stopped turning a blind eye to old 
+bugs; My main concern now is getting most big
+programs to work with nwcc, which requires a much
+higher degree of correctness than before.
+
+Thus all efforts since version 0.7.3 were put into
+making nwcc more correct and more compatible with
+existing open-source apps. Well over hundred
+general and platform-specific bugs have been fixed,
+and many C99 and GNU C features were implemented,
+and even so there is still a lot to do.
+
+Note that most debugging was done on x86 and AMD64
+platforms, where compatibility with many open-
+source apps has consequently improved grealy (some
+that mostly work now are gtar, gzip, gmake, vim,
+coreutils, lsof, xterm, lynx and wget).
+
+However, the PPC, MIPS and SPARC platforms are
+still in a sad state of affairs; That is the
+primary reason why there are no binaries for those
+systems in this release. Output code quality has
+also been degraded some more.
+
+Those issues will be dealt with later, since it is
+not practical to fix them all quickly, and not
+desirable to let people continue to download 0.7.3
+instead of a current snapshot only because it has
+the "last real release" stamp on it. It is time to
+draw a line and call it a new version; After all,
+this is not version 1.0, and there are many
+improvemenst over 0.7.3 anyway.
+
+----
+Bugfixes:
+
+I estimate that more than 100 general and platform-
+specific bugs have been fixed in: Switch statements,
+long long comparison and shifting, constant expressions,
+declaration parsing, typedefs, typeof, function return
+values, structure and array initializers, sizeof
+expressions, structure member addressing, bitwise
+negation, indirect assignment, structure assignment,
+functions returning structs as initializers, conditional
+operator, x87 floating point, conversion of integral
+types to pointers, statements-as-expressions, inline
+assembly, AMD64 function pointers, SPARC and PPC
+alignment, AMD64 and SPARC floating point, and so on so
+forth. Many of these contained (and in some cases still
+contain) multiple bugs, far too many to remember.
+----
+
+Features:
+
+In addition to the bugfixing, nwcc has gotten support for
+a few more GNU C and C99 features, such as basic VLAs,
+compound literals and designated initializers, anonymous
+unions, conditional operator with empty operands,
+variable struct/array initializers, some more attributes
+and builtins, pointer arithmetic on void pointers, and
+so on.
+

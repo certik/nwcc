@@ -1,0 +1,89 @@
+# LDFLAGS = -L/usr/local/lib -lefence
+# -pg 
+# -DDEBUG for lexical analysis
+# -DDEBUG2 for declaration parsing
+# -DDEBUG3 for expression parsing (type promotions 'n stuff)
+# -DDEBUG4 for intermediate code display
+# -DDEBUG6 for register logging
+# -DNO_EXPR to disable expression parser
+CFLAGS += -DPREPROCESSOR
+
+CPPOBJ = \
+cpp_main.o \
+defs.o \
+error.o \
+token.o \
+libnwcc.o \
+numlimits.o \
+evalexpr.o \
+expr.o \
+misc.o \
+n_libc.o \
+preprocess.o \
+standards.o \
+system.o \
+type.o \
+subexpr.o \
+typemap.o \
+macros.o
+
+nwcpp: $(CPPOBJ)
+	$(CC) $(CFLAGS) $(CPPOBJ) -o nwcpp $(LDFLAGS)
+
+cpp_main.o: cpp_main.c
+	$(CC) $(CFLAGS) cpp_main.c -c
+
+defs.o: defs.c defs.h
+	$(CC) $(CFLAGS) defs.c -c
+
+error.o: error.c error.h
+	$(CC) $(CFLAGS) error.c -c
+
+evalexpr.o: evalexpr.c evalexpr.h
+	$(CC) $(CFLAGS) evalexpr.c -c
+
+expr.o: expr.c expr.h
+	$(CC) $(CFLAGS) expr.c -c
+
+preprocess.o: preprocess.c preprocess.h
+	$(CC) $(CFLAGS) preprocess.c -c
+
+standards.o: standards.c standards.h
+	$(CC) $(CFLAGS) standards.c -c
+
+system.o: system.c system.h
+	$(CC) $(CFLAGS) system.c -c
+
+libnwcc.o: libnwcc.c libnwcc.h
+	$(CC) $(CFLAGS) libnwcc.c -c
+
+macros.o: macros.c macros.h
+	$(CC) $(CFLAGS) macros.c -c
+
+misc.o: misc.c misc.h
+	$(CC) $(CFLAGS) misc.c -c
+
+n_libc.o: n_libc.c n_libc.h
+	$(CC) $(CFLAGS) n_libc.c -c
+
+numlimits.o: numlimits.c numlimits.h
+	$(CC) $(CFLAGS) numlimits.c -c
+
+subexpr.o: subexpr.c subexpr.h
+	$(CC) $(CFLAGS) subexpr.c -c
+
+token.o: token.c token.h
+	$(CC) $(CFLAGS) token.c -c
+
+type.o: type.c type.h
+	$(CC) $(CFLAGS) type.c -c
+
+typemap.o: typemap.c typemap.h
+	$(CC) $(CFLAGS) typemap.c -c
+
+# x86_emit_gas.o: x86_emit_gas.c x86_emit_gas.h
+#	$(CC) $(CFLAGS) x86_emit_gas.c -c
+
+clean:
+	rm -rf $(CPPOBJ) nwcpp core 
+

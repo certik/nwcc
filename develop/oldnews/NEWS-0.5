@@ -1,0 +1,229 @@
+April 1
+=======
+
+I got some MIPS floating point groundwork done today; Loads, stores,
+conversions, constants, arithmetics - though it all is incomplete.
+The most unpleasant surprise I've had with this is that ``long
+double'' is to MIPS what ``long long'' is to x86 - Arithmetic
+operations have to be software-emulated. That's quite a showstopper
+as far as full C89 compatibility is concerned because, I guess,
+there's absolutely no way I'll get around to doing floating point in
+software any time soon.
+
+I'll need software floating point to do constant expression
+evaluation for cross-compilation between systems with incompatible
+floating point formats ... But that is a long way off. 
+
+
+Mar 31
+======
+
+Today was a fairly productive day and a lot of MIPS progress has
+been made. I implemented variadic functions and fixed a lot of
+bugs, such that nwcc on MIPS now passes the entire test suite
+except three files - Two that use floating point and one that uses
+x86 inline assembly. So I'll spend the next couple of days working
+on floating point support, and will then be able to try compiling
+nwcc with itself on MIPS. It's quite exciting how far I've come in
+only two weeks - I started with zero MIPS support on March 16 and
+today nwcc is already able to compile large files like icode.c of
+itself (though I cannot test the output yet.) At this speed, nwcc
+on MIPS will probably be as good as nwcc on x86 in one, or at most
+two weeks. Then I can finally get back to fixing machine-independent
+bugs (yes there are still many of those :-()
+
+By the way, it turned out that I was wrong about structures passed
+by value (see Mar 30 news) - it IS possible to get a coherent result
+struct! I initially thought variadic functions were posing the same
+problem, but, upon closer examination, it's quite easy to get a
+coherent stack block for all variadic arguments even if some of them
+are in registers and some on the stack - And the very same concept
+for doing so applies to structures as well! So I may rethink the
+decision to be ABI incompatible in this regard. Of course I have
+saved a copy of all of the n32/n64-style struct-by-value coying
+code ... But the fact remains that it's very complex, and my
+implementation isn't quite complete yet.
+
+
+Mar 30
+======
+
+I've been struggling with structure passing the past couple of days.
+Today I finally decided to discard the idea of full n32/n64 ABI
+compatibility, and changed the ABI to be x86-like as far as structs
+are concerned. That saved me about 500 lines of code. It's not that
+the ABIs are impossible to implement - in fact I was close to
+completition - but they require a LOT of code, and do not work well
+with nwcc at all. I just can't take any more of this stuff ...
+
+The straw that broke the camel's back was the fact that it's
+impossible for a callee that takes a big structure argument to get
+a coherent result struct in any sensible way. Consider the
+following:
+
+struct big {
+	char	buf[1000];
+};
+
+void
+foo(struct big b) {
+	/* ... */
+
+With the n32/n64 ABIs, the first 64 bytes of that struct would be
+passed in registers, and the rest on the stack. The problem is that
+nwcc can really only deal with structs as coherent units, and in
+many cases it is absolutely critical to do so. For instance, to
+assign one struct to another, or to take the address of a struct.
+Having some pieces in registers generally does not work well with
+many things at all, and complicates things greatly. So how to get
+a coherent struct on the stack? Well, that's the bad news ... The
+caller only allocates enough stack space for the part of the big
+struct that was actually passed on the stack. So we have to create
+a completely new struct on the stack and copy both the register
+contents and the stack piece of the argument struct to it.
+
+At the point when I realized I had to do this, I finally trashed
+all of the MIPS struct-by-value stuff. Now EVERY struct is passed
+on the stack. I don't believe the consequences are too bad,
+however, as library functions generally tend not to take and
+return structures by value (user code is no problem ABI-wise
+because nwcc is internally consistent.)
+
+Now 50 of 60 test files pass correctly on MIPS. Most of the
+remaining files use variadic functions, which I'll attempt to
+implement tomorrow.
+
+
+Mar 26
+======
+
+Party implemented structure argument and return value passing for MIPS.
+I also did scalar stack arguments. Structures can currently only be
+passed if they fit into registers because stack passing isn't done yet.
+
+You can say a lot of negative things about x86 and it would be justified.
+But I really like the simplicity and consistency of the System V x86
+ABI. No matter how much code I may save with simpler MIPS register
+allocator design, type conversions, etc - The code ends up being just as
+complex as the x86 stuff because of all of the work that goes into MIPS
+ABI support.
+
+And on top of that, passing the first arguments in registers usually
+doesn't even buy anything because most of the time, you end up having to
+save the register arguments on the stack anyway. So it would be MUCH more
+convenient if the caller would just place all arguments on the stack to
+avoid the unnecessary register indirection.
+
+Oh, and the MIPS frame pointer points to the bottom of the stack
+frame (at least that's what gcc does), which is extremely unpleasant as
+well. From now on  I'll probably always bring up the clean calling
+conventions and stack frame setup whenever someone complains about x86
+to me ;-)
+
+
+
+Mar 22
+======
+
+I spent 9 hours (with some interruptions) working on MIPS stuff
+today. Now nwcc on MIPS passes 45 out of 60 test files. The code was
+written with n32 and n64 ABI support in mind, but I haven't tested the 
+n64 stuff yet, and you know as well as I do that untested code NEVER
+works at all. Most things relating to pointers, arrays, expressions,
+control structures and many others are looking pretty good; It's mainly
+function calls - passing of variables on the stack, passing and
+returning structs/unions, variadic functions generally - that still
+need to be done (and I'm not looking forward to doing it.) Oh, and
+floating point is missing completely (for x86, nwcc at least has some
+very fragile support.)
+
+I also found out that the typing of numeric constants was completely
+broken, so that an nwcc-compiled nwcc on FreeBSD e.g. cannot compile
+itself again (but there's only one offending file - numlimits.c - that
+has to be compiled with gcc to make it work.) I fixed some of the
+problems but a lot remain, as numlimits.c is so old, so untested and
+so messed up beyond imagination.
+
+
+Mar 21
+======
+
+Kludged some more MIPS stuff today; Implemented branching, static
+variables, initializers, structure assignment, structure return values
+etc etc. Though for most of these features, ``implemented'' means
+``it is compilable!'' That is to say, I haven't tested much of it, and
+some of the things that I did test are still broken. But I also got some
+things to work, such that e.g. control structures appear to work.
+
+About five or six of the test programs in tests/ (there are 63 of them)
+already work (I only recall that condop.c is among them.)
+
+
+Mar 20
+======
+
+I started writing the MIPS backend and have already come quite far,
+considering I've only been doing this for one day. ``hello world''
+already compiles, as do programs involving very simple arithmetic
+expressions. Struct/union function arguments and return values, as
+well as excess arguments passed on the stack, aren't done yet.
+Neither are static variables plus initializers, structure assignment
+and a lot of other things. However, I'm not expecting this to take
+too long.
+
+stdnrw/nwcc_ng [0]> cat hello.c
+int
+main() {
+        puts("hello c engineers");
+}
+
+stdnrw/nwcc_ng [0]> ./nwcc1 hello.c
+hello.c:3: Warning: Call to `puts' without declaration (illegal in C99)
+        puts("hello c engineers");
+        ^^^^ here
+/var/tmp/cpp64.cpp - 0 error(s), 1 warning(s)
+stdnrw/nwcc_ng [0]> cat hello.asm
+        .option pic2
+        .section .rodata,0x1,0x2,0,8
+        .section .data,0x1,0x3,0,8
+        .section .text,0x1,0x6,4,4
+
+.section .rodata
+_Str0:
+.byte   0x68,0x65,0x6c,0x6c,0x6f,0x20,0x63,0x20,0x65,0x6e,0x67,
+        0x69,0x6e,0x65,0x65,0x72,0x73, 0
+        .align 3
+.section .text
+        .align 2
+        .globl main
+        .ent main
+main:
+        .frame $sp, 24, $31
+        subu $sp, $sp, 24
+        .mask 0xd0000000,-0
+        sd $28, 16($sp)
+        sd $30, 8($sp)
+        sd $31, 0($sp)
+        move $fp, $sp
+        la $2, _Str0
+        move $4, $2
+        la $25, puts
+        jal $31, $25
+        ld $28, 16($sp)
+        ld $30, 8($sp)
+        ld $31, 0($sp)
+        j $31
+        .end main
+
+
+
+Mar 16
+======
+
+Time for a new nwcc release - version 0.5! Work since 0.4 has mainly
+focused on two things: Inline assembly support and bug fixing. Inline
+asm has come a long way, and though it is still a battlefield, the
+present support is good enough to work with the FreeBSD headers.
+
+Finally it is possible to compile nwcc with itself on FreeBSD.
+

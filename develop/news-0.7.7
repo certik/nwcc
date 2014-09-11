@@ -1,0 +1,217 @@
+Mar 03 2009
+===========
+
+I've decided I'm done with OSX for now, so now I'm doing
+general debugging. I already got PostgreSQL, bash, nasm
+and pine to compile, though I've only tried the resulting
+bash and nasm binaries (both seem to work now, but bash
+required some debugging, and nasm is ___SLOW___!!!!).
+strace also compiled and worked without debugging, but
+it's not such a big program either.
+
+Apache still gives a few (very few) linker errors when
+building the httpd binary and I still haven't figured out
+why. Note that linker errors do not necessarily indicate
+nwcc bugs. E.g. in PostgreSQL I had a case where:
+
+	- A static inline function referenced an extern
+variable
+
+	- The function was never called in the pg_dump
+program but its containing file was linked regardless
+
+	- The file which contained the referenced extern
+variable was NOT linked
+
+	- gcc removed the unused function body and thus
+prevented a linker error for the variable
+
+nwcc didn't remove the function body, so I had to hold
+back local inline function definitions until the end of
+the program to check whether they are referenced, such
+that they can be omitted like in gcc.
+
+I figured Apache's problems would be similar in nature,
+but currently it doesn't seem so.
+
+gcc 4.2.0 still fails some time early when running
+generator programs ...
+
+
+Feb 23 2009
+===========
+
+Fixed some more AMD64 bugs. I also gave in and ___FINALLY___
+fixed long double to include padding sizes on x86 and AMD64
+instead of using workarounds when passing it to functions.
+
+This appears to work, but may have broken something.
+
+Also, apparently integer to SSE floating point conversion
+isn't working on OSX/x86, so there is still some work left.
+Compared with Linux, the gcc test suite is just about 10 test
+cases behind on OSX as far as correctness is concerned. 
+
+
+Feb 22 2009
+===========
+
+I fixed some more OSX/x86 issues and wrote support for OSX/
+AMD64. The latter just took one night and I was really
+surprised to see how much work I did for OSX/x86 was either
+already applicable, or unneeded.
+
+However, there are apparently still a few AMD64 bugs since
+the gcc test suite has 20 or so fewer passes than one would
+expect. There are also a few cases on x86 which still fail
+for OSX but work on Linux.
+
+
+Feb 15 2009
+===========
+
+Clearly the long double hackery on x86 and AMD64 must go. On
+x86 nwcc has historically been using 10 as a size, and added
+two bytes of padding when passing it as function arguments.
+This probably breaks struct offsets and memory allocation using
+malloc() and such things. Now on OSX long double is 16 bytes
+(instead of 12) so I've extended the workarounds again - in
+icode_make_fcall(), calc_x86_stack_bytes(), gen_function()
+and __builtin_va_arg(). Instead I should bump the sizes to 12
+on x86 and 16 on OSX and not use nonsense padding. I tried
+this before (long ago) but it broke other stuff, so I reverted
+those changes ...
+
+Anyway, my big test suite results are looking OK on OSX/x86
+now:
+
+	1560 passed
+	58 failed at compile time
+	13 failed at runtime
+
+That's just 10 fewer passed than on Linux/x86. However, self-
+compilation fails because of a few linker errors. I'll spend
+a few days on the remaining issues, then maybe fix the long
+double problems, and then look into OSX/AMD64.
+
+
+Feb 14 2009
+===========
+
+In the OSX/IBM/PPC culture, nothing is more frustrating than
+position-independent code and static variables. These guys
+are shitting me sooooooo much. First I had all of these TOC
+problems on Linux and to a lesser extent AIX. And now I'm
+forced to deal with Apple's Mach-O version of this nonsense
+and it's just as disgusting and nothing works and I'm not
+getting anything done because it tires me so much.
+
+
+Feb 11 2009
+===========
+
+I've started porting to Mac OS X on my new macbook. Most
+test cases of the nwcc test suite already pass, but there
+are also still many bugs and I've only worked on x86 so
+far; For AMD64 I'll have to redo it once more. However, I
+expect the AMD64 port to be a bit easier because other
+systems on AMD64 already use SSE for floating point, so
+the ABI may be a bit closer to OSX.
+
+
+Feb 04 2009
+===========
+
+Finally it is time to release nwcc 0.7.7.
+
+This version focuses almost exclusively on PPC support and
+ABI-compatible bitfield layout (both of which are still not
+perfect yet).
+
+In particular, Linux/PPC64 support has been added. Many
+general PPC bugs were fixed as well, such that AIX/PPC32
+support is also much improved. However, Linux/PPC32 support
+is not available yet, and AIX/PPC64 has not been tested in
+a long time now.
+
+Many thanks to the Oregon State University Open Source Lab
+for providing me with Linux/PPC64 access! Thanks also to
+KIMURA Masaru (hiyuh) for pointing me into their direction.
+
+AIX/PPC32 is lacking behind Linux/PPC64 in that some integer
+to floating point conversions are unimplemented. Also, large
+programs which fill up the TOC will not work because the
+-mminimal-toc option is only supported on Linux.
+
+Linux/PPC64 is lacking behind AIX/PPC32 in that long double
+support is worse (on AIX it's just equivalent to double and
+thus much easier to implement).
+
+There is a new command line flag to distinguish between AIX
+and Linux for cross-compilation:
+
+	nwcc -arch=ppc -sys=linux	# xcomp for Linux
+	nwcc -arch=ppc -sys=aix		# xcomp for AIX
+
+Support for MirBSD/x86 was also added, and various generic
+bugs have been fixed. However, this version barely improves
+upon 0.7.6 as far as x86/AMD64 are concerned - Just bitfield
+storage layout is now almost ABI-compatible.
+
+Linux/PPC64:
+
+1541 passed
+76 failed at compile time
+16 failed at runtime
+
+
+AIX/PPC32:
+
+1518 passed
+105 failed at compile time
+29 failed at runtime
+
+
+Linux/x86:
+
+1568 passed
+54 failed at compile time
+13 failed at runtime
+
+
+Linux/AMD64:
+
+1566 passed
+58 failed at compile time
+11 failed at runtime
+
+
+Here's a summary of the most important remaining PPC issues:
+
+There are some remaining PPC issues which will be fixed later
+(but not necessarily soon):
+
+	- 128bit long double is emulated using double, which
+lowers precision (increment/decrement operators are also 
+unimplemented for this type). This doesn't apply to AIX which
+uses 64bit long double too!
+
+	- Bitfield storage layout is still broken. Especially
+bitfield initializers aren't working properly
+
+	- Integer to floating point conversion doesn't
+always work on PPC32
+
+	- There may still be some stdarg issues with struct-
+by-value and floating point
+
+	- Inline assembly support is still missing
+	
+	- Thread-local storage is still missing
+
+
+This release adds support for Linux/PPC64, and fixes many PPC-specific
+bugs. Bitfield storage layout was made ABI compatible on little endian
+systems (there are still bugs with big endian).
+
+

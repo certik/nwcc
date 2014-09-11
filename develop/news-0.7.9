@@ -1,0 +1,420 @@
+Aug 16 2009
+===========
+
+I'm ready to give up on Ruby for now. There's
+no chance in hell I can get the giant 100k
+lines array file to compile without lots of
+memory allocation changes.
+
+For now I manually compile this file with gcc.
+All other Ruby files work with nwcc, and the
+resulting Ruby binary even passes most of its
+test suite test cases.
+
+Tcl still has a few bugs in the test suite. I
+think that's where I'll continue. Then maybe
+some more MIPS work and I'll just release 0.8.
+
+
+Aug 13 2009
+===========
+
+OK, the freelist stuff seems to work now but it
+doesn't really help. While letting nwcc run up to
+about ~1.2gb of virual memory for the giant Ruby
+file, I found that tokens alone take about 450mb.
+
+So we should zone allocate them too. But there
+are still some unknowns. For example, with the
+freelist changes, "struct expr" takes 25mb at
+that point, and "struct s_expr" about 100mb. With
+50% and 25% savings from freelist usage,
+respectively. So that means a lot of memory is
+taken by other things.
+
+Constant expression value buffers (Z_CEXPR_BUF)
+and initializer structs (Z_INITIALIZER) do NOT
+seem to take up a lot of memory.
+
+I'll try to run it through valgrind or something
+tomorrow.
+
+
+Aug 12 2009
+===========
+
+Python seems to run right now (at least the test
+suite), so I'm back to Ruby's 100k lines structure
+file.
+
+This kills the zone allocator because it isn't fine
+grained at all. So I just tried to add a freelist
+to put partially evaluated "struct expr" and
+"struct s_expr" data structures... Easier said than
+done!
+
+struct _IO_FILE {  char _unused2[15 * sizeof (int) - 4 * sizeof (void *) - sizeof (unsigned int)]; };
+extern __const char *__const sys_errlist[];
+static int func() {  return 123; }
+int main() {  struct bogus { char buf[3]; } b = {   1, 2, 3 }; }
+
+With the freelist changes, this program fails with
+an undefined reference to a nonexistent string,
+even though the program references no string.
+
+If I remove any of the 4 lines, I always get a
+different type of error; Crash in conv_from_uint(),
+a "panic" error message from bind_operators(), and
+other errors that I don't remember. It is enough
+to simply remove components from the array
+declaration expression to change the behavior.
+
+It sure seems like there's no determinism left at
+all. I'm almost ready to give up but I'll try to
+look into it tomorrow.
+
+Perl still fails in pthread_atfork(). ltrace
+revealed that there's a pthread_init_mutex() call
+early on in the program, which gives me a VERY
+tiny hope that that one may have been called
+wrongly and trashed pthread data structures that
+are also used by pthread_atfork().
+
+tcl still has errors in the test suite.
+
+I'm sick of the bugs.
+
+
+Aug 8 2009
+==========
+
+I've been debugging Python, Perl and Ruby compilation.
+Interpreters and compilers make for great correctness
+tests because the resulting binaries can be easily
+exercised simply by running their test suites or
+otherwise throwing code at them.
+
+Sadly nwcc is still top buggy to handle them properly.
+After many gours of debugging Python, the interpreter
+still fails very early during its stdio initialization
+process. I gave up for now.
+
+miniperl immediately seems to crash at the very
+beginning in pthread_atfork(). I don't understand why
+and gave up on that as well.
+
+I got ruby to compile and run today; It passes 25
+test cases before reporting an interpreter error. But
+even this one isn't great because there is one 100k
+lines file in Ruby which I had to compile with gcc
+because it is full of giant struct tables with giant
+initializer expressions which break nwcc.
+
+
+Aug 1 2009
+==========
+
+Fixed more MIPS bugs, and some SPARC and PPC stuff as
+well. The PPC fixes made 15 or so more tests in the
+gcc work, the numbers are comparable to those of nwcc
+0.7.7 on x86/AMD64 - not bad!
+
+As for SPARC - It appears that bitfields aren't as
+broken as I thought. It turns out that my decision to
+undefine __GNUC__ on Solaris was wrong because it
+uses GNU C for stdarg in the system headers. After I
+fixed some other stuff, there are still many errors
+in the test suite - especially in long double - but
+maybe I can beat it into shape.
+
+Almost the entire nwcc test suite passes properly on
+MIPS now, so I tried the gcc suite. Here are the first
+results:
+
+	1521 passed
+	57 failed at compile time
+	55 failed at runtime
+
+This looks disappointing at first sight because I had
+hoped for more. For comparison, on x86 almost 1590
+tests pass (PPC64 is at 1572 now).
+
+But I guess it's an OK starting point.
+
+In an ideal world, SPARC/PPC/MIPS support would work
+as well as x86/AMD64, and I could implement ARM,
+PA-RISC and maybe Alpha support. Though, it will be
+difficult to defend even PA-RISC, so maybe I should
+target another embedded architecture instead. But I
+have a HP-UX machine which I'd like to play with
+more ...
+
+
+
+July 25 2009
+============
+
+More MIPS stuff debugged!
+
+Structs can now correctly be passed by value. Like on
+PPC, the first parts of a struct are apparently mapped
+to save area slots in a manner which ignores the struct
+contents: The first 8 bytes (even including padding
+space) to go the first available GPR, the next 8 bytes
+to the next one, etc.
+
+My recollection from reading the N64 ABI was that it
+does mention struct member types and discusses specific
+assignments to save area slots. There may also be
+differences between Linux/MIPSel and IRIX.
+
+Anyway, it is good to have this out of the way. MIPS
+now reuses PPC code for passing structs, and while
+adapting it for MIPS, I found 3 potential bugs, 1 of
+which could already be confirmed and fixed on
+Linux/PPC64.
+
+There are few remaining visible MIPS issues now, at
+least with N64 (I haven't even tested with N32 at all
+yet):
+
+	- Struct-by-value passing doesn't handle
+structs containing long double members properly yet
+(presumably these require aligned argument slots, just
+like plain long double arguments)
+
+	- Scalar ABI support is probably not
+externally correct yet because nwcc still doesn't
+divide all items into unified argument slots (i.e.
+if the first argument is an integer, then if the
+second argument is a floating point value, it SHOULD
+be passed in the SECOND available floating point
+register)
+
+	- The __builtin_va_copy() test case crashes
+
+	- Bitfields are still very much broken. This
+is a VERY BIG point that may potentially require a
+lot of VERY painful work, but it would also apply to
+PPC and SPARC. SPARC support in particular is
+completely unusable because there are stdio macros
+for things like putchar() which access bitfield
+members of the FILE structure, and this breaks
+
+---------
+
+I also implemented very basic wchar_t support for
+L"" and L'' constants that do NOT contain extended
+chars beyond 255 (wide character constants are
+treated like normal string constants, and every
+char is simply emitted as that char followed by 3
+null bytes).
+
+This is currently hard-coded to use 32bit wchar_t
+and works at least with Linux on x86 and PPC64, but
+hasn't been tested on any other Unix systems yet.
+
+Apart from the MIPS things, here's a wishlist of
+remaining things I'd like to tackle before making
+the next release (I may not get around to doing
+all though):
+
+	- Fix more general runtime bugs in PHP
+and possibly other programs (its comprehensive
+test suite does not pass fully)
+
+	- Fix more preprocessor bugs, extend the
+preprocessor test suite greatly
+
+	- Add MirBSD support
+
+	- Create a configuration file for core
+compiler settings. This could include things like
+standard linker flags, names and paths of
+external binaries like preprocessor/assembler/
+linker, standard include file and library
+directories, etc
+
+I'm also dying to do an ARM port. I haven't ported
+to a new arch since January 2007 :-(  But I guess
+most backends are too half-baked, and adding new
+architecture support just contributes to that...
+
+
+July 17 2009
+============
+
+I've been debugging some more MIPS things. It is amazing
+to see how many very basic bugs there still are in this
+backend. The test suite looked totally horrible when I
+started, and although it's a bit better now, there are
+still many issues. Here is the list of high priority
+things to do:
+
+	- The build process doesn't pick the correct
+64bit flags (should be ABI=-mabi=64), and it should warn
+if there are no 64bit libraries installed (nwcc can't do
+32bit MIPS ABIs), and I haven't tested with N32 yet
+
+	- Proper scalar ABI support (floating point and
+integer arguments are probably not correctly assigned to
+argument slots) with internal and external consistency
+
+	- Proper struct ABI support. This has been a
+long-standing RISC problem and should be fixed like on
+PPC if possible
+
+	- Proper long double ABI support (I've started
+implementing 128bit long double now, but it isn't fully
+handled in icode_make_return() and icode_make_fcall()
+yet)
+
+	- Proper long double <-> double conversion in
+libnwcc
+
+	- Bitfields generally don't seem to work well
+on MIPS, which is a bit surprising because the concept
+is expected to be stable and already works on x86, AMD64
+and PPC
+
+	- Bitfield initializers may need to be fixed
+(this applies to all big endian architectures, but
+possibly also to MIPSel)
+
+	- Computed gotos are missing
+
+This is going to be a huge time sink, which will again
+prevent me from debugging general bugs, but I guess it
+is OK because I'm on vacation. So MIPS support is now
+my official vacation project :-)
+
+Thorsten Glaser reported various bugs as well:
+
+	- tty colors were reset even with -uncolor
+	  (fixed)
+
+	- void ** pointer arithmetic gave wrong warnings
+	  (fixed)
+
+	- offsetof()-like pointer to integer conversions
+	  yield nonsense warnings in some contexts
+	  (unsolved, solution not clear yet)
+
+	- -stackprotect does not always work even on x86
+	  (unsolved, solution not clear yet)
+
+(MirBSD support should also be added when I get around
+to it.)
+
+And I found that error messages are immediately followed
+by abort() in nwcc 0.7.9 :-(  I often call it while
+debugging and every once in a while it slips into a
+release.
+
+Because there will likely be no more general bugfixes
+while I'm hogged by MIPS work, it's time for a new
+snapshot!
+
+
+July 14 2009
+============
+
+I've fixed the last known remaining Apache bug (had to do
+with conditional operator and "long long" on x86), and some
+PHP issues. PHP in particular is not "done" yet; Its test
+suite hangs at some point, and the results differ depending
+on whether it is compiled with __GNUC__ defined or not. I
+already had to fix an inline assembly bug for __GNUC__ to
+make the test suite run at all, so I figure there may be
+one or more remaining inline asm bugs.
+
+I also got access to a Linux/MIPS64 (little endian) system,
+so I've been doing some MIPS debugging. I've already run
+into 3 or 4 issues that completely broke MIPS support
+between 0.7.7 and 0.7.9 (e.g. static variable definitions
+were never emitted!).
+
+LOTS of other things that used to work aren't working
+either. It will take a week or two of full time work to
+get MIPS into shape. But then it may be the best supported
+RISC architecture, and gcc test suite results will be very
+interesting. I can also reuse the Linux/PPC long double
+emulation kludge.
+
+
+July 08 2009
+============
+
+I gave in and spent another 4 hours searching for the
+Apache compilation bug.
+
+After digging through many obfuscated layers of their hook
+system, I found that nwcc 0.7.9 makes even local file scope
+variables "common" by default!
+
+So some of the many Apache hooks tables:
+
+	static struct {
+		void (*init_bla_bla)();
+		...
+	} _hooks;
+
+... which occur in multiple files and have different
+meanings, were assigned a single memory location! This was
+so hard to find because all tables are the same size and
+serve a similar purpose, so the function pointers weren't
+garbage but just pointed to the wrong hook callback handlers.
+
+(Another filter against clashes was that both variables have
+to be the N-th static variable in their respective file to be
+combined into one - Otherwise the "name mangling" prevents
+it.)
+
+The reason nwcc 0.7.9 makes them common is that it explicitly
+introduces common variable support for x86 again to avoid
+multiple definition linker errors (unless -fno-common is
+used), and this change apparently hasn't matured enough for
+the release.
+
+I'm getting another crash in Apache now, but this will be
+much easier to debug. Once Apache works, I'll probably
+continue with Python (which requires wchar_t support). I
+should probably also try out a few window manager
+applications.
+
+
+July 05 2009
+============
+
+Time to release nwcc 0.7.9!
+
+This version mostly focuses on general bugfixes. nwcc can now
+build various bigger programs, such as gcc, Apache and PHP.
+However, code correctness is still not perfect, and Apache in
+particular still has a runtime bug or two. And the PHP test
+suite does not pass fully.
+
+The preprocessor nwcpp has received some attention, and now
+also understands the -arch/-abi/-sys flags. It also handles
+system macro definitions more appropriately. But there are
+probably still too many bugs to use it for now.
+
+nwcc can now stop pretending to be gcc if you use the -notgnu
+command line option, which can also be put into the config
+file;
+
+	echo 'options = notgnu' > ~/.nwcc/nwcc.conf
+
+This will cause nwcc to stop defining the __GNUC__ macro,
+which is needed to build heavily GNU-specific applications
+like gcc. It is also the default setting on AIX, Solaris and
+IRIX now. On those systems you can ask nwcc to claim GNU C
+conformance by passing the -gnu command line option.
+
+However, other systems such as Mac OS X really do need a lot
+of GNU C support for the system headers.
+
+The topic is discussed on the website:
+
+	http://nwcc.sf.net/nwccgnu.html
+

@@ -1,0 +1,210 @@
+Jan 20
+======
+
+Fixed some typing stuff and added conditional operator in constant expressions.
+Thanks to the latter, nwcc can now compile token.c and various other files that
+previously failed due to use of the ?: operator in the system header files!
+The following files of nwcc cannot be compiled with nwcc:
+
+defs.c, builtins.c, exectools.c, scope.c, x86_gen.c, x86_emit_nasm.c
+
+... but all others can! Most of those that don't work fail with a ``not
+implemented'' (unimpl()) message. exectools.c makes nwcc segfault.
+
+I'm not sure how much floating point work remains to be done, but I assume it's
+not too much. There are still some things missing in constant expression
+evaluation (and those that already exist are rather fragile) and structs/unions
+cannot be passed to variadic functions yet. ``register'' variables are not
+implemented yet, though treating TOK_KEY_REGISTER just like TOK_KEY_AUTO would
+be an easy work-around for now (but e.g. ``register char x; &x;'' should yield
+a diagnostic later on!) Tentative declarations and ``extern'' variables are
+very likely to cause many problems. typeof() is buggy as well. That's all I can
+think of for now but these things are probably just the tip of the iceberg.
+
+
+Jan 18
+======
+
+Added floating point -> integer conversion.
+Fixed a lot of small <-> big integer conversion problems.
+Fixed a lot of other stuff.
+There are still many bugs with signedness and type conversions, which is
+barely surprising as most of my test programs only use ``int''-typed
+variables and expressions (because I knew full well that char/short
+support isn't too good when I wrote them.)
+
+
+Jan 17
+======
+
+Added some integer -> floating point conversion code.
+
+float x = 123;
+
+... turns into
+
+section .data
+	_Floatbuf dq 0.0
+
+...
+
+sub esp, 4
+mov eax, 123
+mov [$_Floatbuf], eax
+fild dword [$_Floatbuf]
+fstp dword [ebp - 4]
+
+That _Floatbuf indirection is necessary whenever GPR-resident values are 
+converted to floating point values because fild does not support GPR operands
+(immediate operands don't seem to be supported either.)
+
+
+Jan 15/16
+======
+
+I've spent some time learning x87 floating point and have begun implementing
+floating point for nwcc. One thing I've realized: The x87 design is terrible,
+horrible, appalling, awful. This is by far the worst area of x86 programming
+I've had to deal with to date. I will look into using SSE(2) later but as x87
+is the only portable x86 way to do floating point, it's quite important to have.
+
+I anticipate a lot of headaches in dealing with this stuff (particularly with
+respect to the x87 register allocator and the way I always have to move
+registers around to get them into the top-of-stack st0 and to accomodate for
+loads and stores altering the positions of all registers in the stack.)
+
+Nevertheless, I'll probably get it to work on the next two or three days.
+
+Then I need to fix a few bugs with constant expression evaluation and perhaps
+other things.
+
+Then I will finally be able to compile nwcc with nwcc itself and can begin
+testing all of that output for correctness. As soon as an nwcc-compiled nwcc
+can correctly compile a ``hello world'' that includes at least one header file,
+I can probably declare nwccs beta status.
+
+Jan 13
+======
+
+Much to my surprise, the snake game can be compiled correctly with nwcc now!
+This is so far the biggest known program (~400 lines of code) for which correct
+code can be generated.
+
+Jan 12
+======
+
+Some bugfixes, added code generation for mod operator (can't believe I missed
+that one :-(.) Some floating point code can now be compiled but it may not be
+executed. The result of executing the output is something along the lines;
+
+      puts("ERROR: Use of unimplemented feature\n");
+      exit(1);
+
+... at runtime. I'm using this for now to avoid having to implement floating
+point support only to be able to compile nwcc itself.
+
+
+Jan 10/11
+=========
+
+Made some changes to partially get nwcc to work on OpenBSD/ELF, thanks to the
+help of Graue (www.oceanbase.org), and fixed various bugs. The check80 program
+can now be compiled to a correctly working binary (though the test script does
+not do anything to verify this.)
+
+Jan 9/10
+========
+
+Finished structure/union function return values. That was sort of painful as
+well because it required a lot more code than expected and even touched the
+expr_to_icode() and s_expr_to_icode() interfaces. Good thing it's done now (if
+a bit kludgy.) Really.
+
+Jan 9
+=====
+
+Finally finished structure/union passing. That revealed a lot of terrible and
+nasty bugs in stack addressing :-( ... But those seem to be fixed now. Perhaps
+I will do struct/union function returns later today, but I'm afraid I've had
+enough frustration for today.
+
+Jan 7
+=====
+
+Added some assignment type checking and function call checking. The former
+doesn't give good error messages for function calls but so what - gonna fix
+that later. I may implement structure/union function arguments and returns
+later today; that would be rad.
+
+
+Jan 5/6
+=======
+
+Added support for unions (static, automatic, indirect access seems to work,
+as does assignment (imagine my surprise when I found the structure assignment
+code already handled union assignment perfectly!))
+
+Also, I fixed a few bugs and so nwcc can compile icode.c and decl.c (both are
+currently ~2100 lines in size each) of itself now! As usual, I cannot test this
+stuff however, so there are probably many bugs in the output. Comparing the
+size of this output with that of gccs is none too amusing either; I'm guessing
+nwcc's output is so bloated because of the redundant immediate loads where
+immediate instructions could have been used.
+
+
+Dec 28
+======
+
+Added snake game to play instead of using unimplemented nwcc features.
+
+Dec 23
+======
+
+Robert Oestling (www.robos.org) donated two excellent shell accounts and setup
+Debian 3.1 unstable on one of them today, for which I am very grateful. Using
+this account I have managed to identify nwcc problems with new glibc and
+solved them all. This required me to add support for C99 flexible array
+members, the __extension__ and __const keywords and allowing more than one
+__attribute__ per declaration (really just had to turn an ``if ()'' into a
+``while ()'' for this.)
+
+nwcc's test programs are thusly expected to run on most new Linux systems as
+well. The day before yesterday I fixed some problems with FreeBSD 5.4 and most
+test programs work there as well now. The remaining test programs that do not
+work use header files containing inline assembly in gcc syntax, which I do not
+support yet. It may be possible that there is some way to disable that assembly
+stuff in the BSD headers but I haven't looked into that yet.
+
+
+Dec 23
+======
+
+Got two more files of nwcc itself to compile today, namely driver.c (currently
+250 lines of code) and control.c (431 lines of code.) It is difficult to write
+meaningful test drivers for files like these and so I will probably not be able
+to test the generated code until I can compile all of nwcc. I'm quite sure
+there are many bugs in the generated code; Took me a couple of hours to even
+get them to compile at all today ... Not too long ago, getting a 431 lines file
+using various include files to compile was unthinkable. I'm thinking nwcc will
+soon be usable and then I can do a POWER backend.
+
+
+
+Dec 20, version 0.1
+===================
+
+Almost exactly one month has passed since the very first release of nwcc,
+version 0.1-pre. nwcc's size has grown from ~17000 to ~21000 lines of code and
+much has changed. Among the most important additions are support for aggregate
+initializers (i.e. initializers for structure and array types) and structure
+assignment. However, most of the work went into fixing bugs, and as a result
+I got two more complex test programs to work with nwcc - tests/misc.c and
+tests/strlol.c. The former is a file of nwcc itself that implements a variadic
+wrapper for popen() and the latter implements and uses clones of strcpy(),
+strlen() and strchr().
+
+Most people have no idea how much work it takes to get all of these things to
+work and I always get asked ``can nwcc compile itself yet?''. The truth is that
+there's still a lot of stuff broken or missing but personally, I'm quite happy
+with the progress I'm making and I can see nwcc ``getting there'' soon enough
+:-)

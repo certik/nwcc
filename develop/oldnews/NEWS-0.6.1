@@ -1,0 +1,272 @@
+May 24/25
+=========
+
+Implemented variadic functions for AMD64 and fixed a lot of stuff.
+I have to say the way variadic functions are done on AMD64 is
+absolutely terrible. But I'm not going to lose a lot of words about
+it because it sort of works now (though I still have to do struct
+and floating point arguments.)
+
+In any case, nwcc on AMD64 passes 61 of 66 test files now. The
+remaining test files use floating point, inline assembly and structs
+passed by value to variadic functions.
+
+In addition, nwcc can compile itself on AMD64 now, but the resulting
+compiler cannot even compile ``hello world'' because the output is 
+obviously still a little buggy. However, the snake game can be
+compiled correctly :)
+
+Perhaps I'll make a new release tomorrow. 
+
+
+May 23
+======
+
+Some more AMD64 improvements. Now I still need variadic functions
+and floating point. Then it should be possible to compile nwcc with
+itself on AMD64. I estimate this will take three or four days.
+
+
+May 21
+======
+
+Almost all non-floating-point test files work on AMD64 now. Just as
+with MIPS, I'm mostly ABI compatible, but not quite; Structs/unions
+are always passed and returned on the stack, and never in registers.
+
+I totally hate the way structs are passed in registers on most
+architectures. I'm sure the guys who design these conventions are
+very smart and well-meaning and all, but in the end, it's just a
+complete mess of complexity.
+
+Passing structs/unions in registers alone takes far more work than
+satisfying the ABI conventions of all other types together. If you
+have a struct like
+
+	struct foo { struct { struct { struct { int x; } x; x; x; };
+
+... then it has to be passed in one integer register, because deep
+down inside of it, there's an ``int''. The story would be totally
+different if the struct were bigger, had floating point members, or
+different alignment. There are all sorts of other complications
+because multiple fields are stuffed into the same register (the
+struct is divided into words for register passing) which also raises
+questions about overlap.
+
+To me, a struct is special and should not be treated like its members.
+A struct may have nested struct members, the fields can have many
+different types, there may be padding between those members to meet
+alignment requirements, and copying structs or accessing their
+members is also different from how it is done with other types. You
+cannot assign one array to another but you can assign a struct
+containing an array to another.
+
+If you take the start address of a struct, or indeed the address of
+any struct member, then you can use it to compute the address of
+every other member. This makes register caching of struct members
+hard and in many cases impossible, or least not very useful.
+
+In short, I find this ABI convention totally annoying, and I'm again
+taking the libery of passing structs and unions on the stack for now.
+I'm sure the need to be ABI-compatible in this regard will arise
+sooner or later, and then I will be prepared to do it the right way.
+But at this point I really don't want to waste a lot of time on this
+stuff.
+
+(BTW, I have found a lot of gcc bug reports regarding struct passing
+on various architectures; That is just another indication of how
+ridiculously complex this stuff is.)
+
+
+May 19
+======
+
+Much AMD64 progress. Now half of all test files pass. Continuing the
+tradition of x86, AMD64 is obviously full of inconsistencies and
+kludges. Here's a small selection of some that I noticed:
+
+     - movsx does not work with a 64bit destination and 32bit source
+       register; instead movsxd has to be used
+
+     - zero extension to rax works by writing to eax
+
+     - a high 8 bit register (ah/bh/ch/dh) cannot be loaded indirectly
+       through a pointer in r8 - r15; instead a low register (al/bl/..)
+       has to be used - ... but rax/rbx/etc can do both!!!
+
+The mess keeps growing.
+
+
+May 18
+======
+
+I did some more AMD64 work today. The main emphasis currently lies on
+sharing as much code as possible between x86 and amd64, so I'm touching
+the old files. This means that stuff may break, but I compiled nwcc and
+gxemul using both nasm and gas, and there does not seem to be any new
+breakage. However, I noticed that gxemul behaves differently depending
+on whether it's assembled with gas or nasm, so there are obviously still
+some bugs in the (new and unproven) gas emitter.
+
+I'm doing this on x86, so the new stuff may not work on AMD64. For all
+I know, perhaps even ``hello world'' doesn't work anymore. I'll test
+this tomorrow.
+
+
+May 17
+======
+
+Tested the AMD64 stuff, and of course it didn't work at all. But now
+``hello world'' does work. I also added a configure script because of
+silly cpp warnings.
+
+I also removed -O from the Makefile because gcc 4.0.4 with -O on AMD64
+seems to generate broken code. At least gdb indicates that it is a
+gcc problem, and nwcc works without -O.
+
+
+May 16
+======
+
+Some more AMD64 work. And man, it already looks like I will have a hell of
+a lot of x86 assumptions to eliminate. I was extremely shocked to see that
+functions like vreg_alloc() and vreg_faultin(), which are supposedly
+platform-independent, assume that pointers are 4 bytes. I'm not sure why
+this naivety is still there, as I generally pay attention to platform-
+specific details, but I suppose it's because these functions were written
+one year ago - when having a single backend already sounded extremely
+exciting to me. These problems probably didn't show up with the MIPS64
+port because it only has word-sized GPRS.
+
+The AMD64 backend should be able to compile ``hello world'' now, but I
+haven't even tested this yet (I'm writing the code on x86), so it probably
+doesn't work ;-)
+
+(I also tested nwcc on MIPS today and it still appears to work.)
+
+May 15
+======
+
+gxemul works with nwcc/gas now, and I feel I'm basically done with the gas
+emitter. Writing this emitter motivated me to start doing an AMD64 backend,
+so that's just what I did. It looks like I'll be able to reuse a LOT of
+x86 stuff, so the x86 files will grow and get messier to accomodate for
+AMD64 differences.
+
+Note that some very recent backend/frontend changes appear to have changed
+MIPS code generation, so I'm naturally expecting that nothing at all works
+on MIPS anymore, for now. Use 0.6.1 if you need MIPS support (which is
+weak as well, but better than nothing.)
+
+
+May 13
+======
+
+nwcc self-compilation with gas works now. The largest program that sort-of-
+partly-works-with-nwcc - gxemul - almost compiles as well, but there are
+still some assembler errors. Performance with nwcc/gas is much better than
+with nwcc/nasm, and is twice as fast as gcc 3.3 on SuSE 8.2. nwcc/gas
+also beats gcc 3.4.2/4.0 on FreeBSD 5.4, but much less so - in fact, the
+difference is barely noticeable. 
+
+I also implemented x86 inline assembly for gas, which took much less time
+than I expected (though I haven't tested this very much, so there may be
+many bugs left.) Perhaps one of these days I'll even get around to doing
+inline asm for MIPS ... (and generally improve the MIPS stuff)
+
+Some day I'll add a config file to nwcc, but for now, the environment
+variable ASM can be used to select the assembler to use without always
+having to supply an -asm option;
+
+nwcc foo.c      <-- generate nasm code, and use nasm for assembling
+
+export ASM=gas
+nwcc foo.c      <-- generate gas code, and use gas for assembling
+
+export ASM=yasm
+nwcc foo.c      <-- generate nasm code, and use yasm for assembling
+
+
+May 12
+======
+
+I made an immense step forward with gas support: Now ALL test files -
+except the one that uses inline assembly - work! The gas emitter can
+also compile a lot of nwcc files, but self-compilation doesn't quite
+work yet.
+
+
+May 11
+======
+
+More gas progress. Not much.
+
+
+May 9
+=====
+
+Some more gas progress. Now 70% or so of all test files pass with the
+gas emitter.
+
+
+May 7
+=====
+
+I've decided to bite the bullet and started writing an emitter for the
+GNU assembler. The motivation is mainly that gas can be faster than
+NASM, and it would be neat to get a compilation speedup that way. gas
+also has a lot more features ...
+
+As with the MIPS backend, I started out by copying the x86 emitter
+file and edited it for gas. There is obviously a lot of code
+duplication that I may wish to clean up in the future. However, from
+the functional side, it's already looking fairly good, and some small
+programs already work with gas.
+
+On a side note, the YASM assembler also works with nwcc (but you need
+version 0.5.99.1508 or newer.)
+
+I've added a new compiler switch to select the assembler used;
+
+nwcc prog.c -asm=nasm   <-- generate nasm code (the default)
+nwcc prog.c -asm=yasm   <-- generate yasm code
+nwcc prog.c -asm=gas    <-- generate gas code
+
+Oh, and I also implemented structs/unions for __builtin_va_arg() on
+x86 (but haven't tested this very thoroughly!)
+
+
+May 6
+=====
+
+I fixed a lot more bugs, implemented GNU C's __PRETTY_FUNCTION__
+(using __func__), and added support for non-int/unsigned int/_Bool
+bitfield members if nwcc is invoked without -ansi (though the layout
+is still completely incompatible with gcc's.)
+
+Now nwcc can build some more small programs I've tried with it, and,
+most interestingly, almost compiles irssi 0.8.8. 
+
+
+May 1
+=====
+
+Most work in the past few weeks went into debugging the frontend. As
+adding new broken stuff is always more enjoyable than getting the old
+broken stuff to work right, there are less changes in this version than
+there were between previous versions. However, the effects of the bug
+fixes are quite visible. In particular, nwcc can now compile gxemul,
+bstrlib, nwirc and quite possibly many other nontrivial programs (but
+code correctness isn't sufficient yet; gxemul, for example, crashes
+very early on when running OS disk images and ELF files.)
+
+I have also implemented many gcc options to make nwcc more usable with
+GNU-specific build scripts. Most of these options are just ignored, so
+please do not e.g. expect gdb support from compiling with -g. The worst
+remaining showstoppers are constant expression evaluation (this is still
+VERY fragile, host-platform-dependent and incomplete), floating point
+support, and bitfields.
+
+(I'm starting with a new job tomorrow, so there may not be any
+substantial nwcc updates for some time to come.)
+

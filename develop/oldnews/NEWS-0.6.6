@@ -1,0 +1,432 @@
+Dec 17 2006
+===========
+
+Today was PowerPC day, so I fixed lots of ``long long''
+bugs, and made alloca() work on it (both PPC and PPC64.)
+Some recent bug fixes also broke lots of stuff on PPC64,
+which I fixed. Another thing I noticed is that floating
+point on PPC64 seems to be completely broken. This is
+somewhat surprising because it does not match my
+memories of writing and debugging the PPC64 stuff.
+
+However, looking at icode_make_fcall(), it is obvious
+that not even printf() will be called correctly with FP
+arguments on PPC64. Oh well, perhaps it just worked by
+coincidence when I last tried it ...
+
+I also fixed a few more MIPS bugs, though I didn't
+manage to get alloca() to work there. What I was seeing
+were bus errors that seem to have been caused by the
+implied calls to malloc() and free(). And don't get me
+wrong - it apparently wasn't a problem with bad
+arguments, but with the act of loading the function
+addresses and jumping to them. Even though these calls
+were performed in exactly the same way as ordinary
+calls! Another one to debug later.
+
+Of course I'd like to fix a lot more stuff, but I feel
+I should soon make a new release, perhaps tomorrow. I
+did put a whole month into debugging, just as planned,
+and it was clear before I started that there would
+still be tons of bugs left afterwards.
+
+Tomorrow begins the first day of my vacation, and I'm
+somewhat determined to write SPARC support now. Perhaps
+I'll do another month of debugging after that.
+
+
+Dec 16 2006
+===========
+
+Well, I've given in and kludged up __builtin_alloca()/
+alloca(). This stuff appears to work fully on x86 (
+though I'm not sure about floating point return
+register integrity yet.) Furthermore, I've completely
+implemented it for AMD64, but haven't tested this yet.
+I've also implemented most stuff that is needed on MIPS
+and PowerPC, but these things are so repetitive (more
+than 700 lines of ``diff'' in my changes) that I
+couldn't bring myself to complete it just yet.
+
+I've also hopefully fixed the structure assignment
+bug on PowerPC and MIPS.
+
+Finally, I've fixed two K&R function definition bugs.
+Implicit int declarations were not supported yet
+because I found it appalling to get right when I
+first attempted it. Today I also found that my
+implementation was sensitive to declaration ordering,
+such that
+
+	void
+	foo(foo, bar)
+		int	bar, foo;
+
+... would give foo and bar a wrong parameter order.
+So I killed two birds with one stone by rewriting
+the declaration<->parameter assignment, which
+conveniently enabled me to do implicit int
+declarations.
+
+As a result of all of these fixes, I can finally
+almost get makeinfo.c (9584 lines of code) of
+texinfo in gcc 2.95 to work.  ... but not quite!!!
+There's a bug in:
+
+	void	usage();
+
+	....
+
+	usage(stderr, SOME_FLAG);
+	...
+	usage(SOME_FLAG);
+
+	void
+	usage(arg)
+	{
+	...
+
+gcc compiles this alright because it does not update
+usage()'s parameter information to turn the first
+usage() declaration into a full prototype, whereas
+nwcc does. Newer versions of this file don't have
+this bug.
+
+Even if I manually edit the file and remove the bad
+call, it doesn't assemble (with nasm) or link (with
+gas) right, so my attempts of getting gcc to work
+may be put to rest for some time.
+
+On a side note, I've finally received my PA-RISC
+manual, so it's quite tempting to write PA-RISC
+support :-) However, the plan is to do SPARC first,
+so that's what I'll do.
+
+
+Dec 12 2006
+===========
+
+I've been trying to compile gcc 2.95 with nwcc on
+FreeBSD/x86, where I stumbled across the signal
+header bug again. It seems there's only one big
+problem, so that compiling with ``-D__aligned(x)=''
+is enough.
+
+The first 30 or so files of gcc can be compiled,
+with the exception of one that redeclares a
+variable that is already present in a system
+header. I've yet to find out why.
+
+Then nwcc puked over a construct such as the
+following:
+
+	if (foo)
+label:
+	   {
+	   	...code...
+	   }
+
+The problem here was that nwcc didn't accept
+labels in front of arbitrary statements. Now it
+does.
+
+Of course, all of this only works if we don't
+define __GNUC__. With that defined, nwcc errored
+very early on when it encountered a call to
+__builtin_alloca(). I'm thinking maybe I should
+kludge up a quick implementation that uses
+malloc() and free() to see how far that gets me.
+
+Getting nwcc to bootstrap gcc before the next
+release would be immensely cool.
+
+
+Dec 10 2006
+===========
+
+Today I added N64 support for IRIX. Actually, I have
+been writing all MIPS stuff with N64 support from the
+start, as there aren't really many differences between
+N32 and N64, so I just had to integrate and debug it.
+
+I still haven't gotten around to doing 32/64bit ABI
+distinction the ``right'' way yet, so to build a 64bit
+MIPS compiler one has to do
+
+	make ABI=-mabi=64
+
+There were a few problems, and some still persist.
+For example, getchar() doesn't work because
+
+	__filbuf(&__iob[0]);
+
+... does not appear to set __iob[0]._cnt to a nonzero
+value even if it should. I have yet to find out why.
+And the struct assignment bug also has to be fixed.
+But these are tasks for a different time on a
+different date.
+
+
+Dec 9 2006
+==========
+
+GNU less really works with nwcc/gas now. There was a
+fairly terrible bug where the most significant four
+bytes of an anonymous ``long long'' on the stack were 
+read and written through the incorrect address
+
+	ebp - (offset + 4)
+	
+instead of the correct
+
+	(ebp - offset) + 4
+
+
+
+	< ........... break ........... >
+
+
+
+Well, I've just returned from a 4 hours MIPS/IRIX
+debugging session! I fixed lots of problems relating
+to sign extension, floating point, and other stuff.
+
+And man, things are looking much better now. I've tried
+compiling GNU less 3.80 on it, and it works without any
+specific debugging at all! But that isn't really a fair
+comparison because most problems I had with ``less'' on
+Linux/x86 related to its EXCESSIVE use of 64bit ``off_t''
+variables; Those exposed many bugs in long long
+handling. Obviously all of the multi-register bugs are
+never encountered on MIPS64 because it can do 64bit in
+hardware.
+
+Nevertheless, I think the struct copying bug with
+struct parent pointers is definitely present, it just
+hasn't shown up yet :-(
+
+But I need a break now. Today was a fairly nwcc-centric
+day indeed.
+
+
+Dec 8 2006
+==========
+
+I finally got around to doing config file support, which
+took about four hours to write and debug. But I'm fairly
+pleased with the results. There's a description in the
+USAGE file and an example in nwcc.conf.sample.
+
+Obviously this is still incomplete and not thoroughly
+tested; For one thing there should be the possibility to
+specify a preprocessor as well!
+
+By the way, it seems GNU less doesn't work with nwcc/gas
+anymore :-( Or maybe it never did and I misinterpreted
+what I saw (though this seems unlikely!); Seeking for
+text yields ``illegal seek'' errors. But it still works
+with nasm, so I can't see how my control structure
+changes may have trashed it ...
+
+
+Dec 7 2006
+==========
+
+I've been trying to compile wget with nwcc, which showed
+me an innocent parse error regarding a do-while statement
+of the form;
+
+	do
+		if (foo) {
+			code;
+		}
+	while (cond);
+
+Turns out control structures were still completely broken.
+Oops. I find this stuff immensely difficult to get right;
+It took me 2-3 iterations in 2005 to have any confidence
+into its correctness. Then I had to fix it twice or so
+more, and finally thought it was really correct now.
+
+What I was missing is that a mixture of compound and
+non-compound statement bodies, such as the example above,
+made the whole thing break down like a card house. And
+not always in obvious ways at that, for example;
+
+	if (0)
+		if (0) {
+			puts("hehe");
+		} else
+			puts("well..");
+	else
+		puts("hmm");
+
+... was silently accepted but would never output ``hmm''
+as it should have! That's because of another bug; The
+body of the second ``else'' was stuffed into the first
+one, thanks to a different bug!
+
+The test cases I wrote for these things took me about
+five hours to debug today and yesterday, and now I have
+mixed feelings. On the one hand, I have reviewed the
+problems very thoroughly, made a lot of bad attempts, and
+finally found solutions that seem ``right'' and coherent.
+But the sheer number of times this stuff has broken down
+on me only permits for one possible conclusion; It will
+NEVER be completely right :-( But I'll be happy if the
+current version gives me a few months of silence in this
+area until the next problem comes up :-)
+
+
+Dec 4 2006
+==========
+
+I found a struct assignment bug in the gas emitter, and
+with that fixed, GNU less can also be compiled correctly
+with nwcc/gas.
+
+In addition I ``ported'' nwcc to DragonFlyBSD; Thanks go
+to Andre van Ruth [www.gnulinux.nl] for an instant
+messaging based remote debugging session to make it
+happen (the only notable difference to nwcc/FreeBSD is
+that DragonFlyBSD requires the use of a new dynamic
+linker.)
+
+I've tried to compile some other applications, which
+reminded me that I badly need a configuration file to do
+such things as selecting default industry standards.
+I'll probably use the following order in precedence (in
+ascending order):
+
+	System wide config (/usr/local/nwcc/nwcc.conf)
+	Personal config (~/.nwcc/nwcc.conf)
+	Environment variables (NWCC_ASM, etc)
+	Command line options (-asm=gas, etc)
+
+It will be very cool to have a config such as;
+
+	options = ansi
+	target = ppc
+	abi = aix64
+
+... to make nwcc by default behave as if it were
+invoked as
+
+	nwcc -ansi -arch=ppc -abi=aix64
+
+
+Nov 28 2006
+===========
+
+I fixed lots and lots of ``long long'' bugs; It seems all
+sorts of comparisons were totally broken. It was quite
+frustrating to stumble across bug after bug, but as far as
+I can see, nwcc can FINALLY compile all of GNU less 3.82
+correctly, at least on SuSE 8.2/x86!
+
+I'd go as far as saying that this was the first
+``hardcore'' debugging session since the last release, as
+I sat on this stuff for 3.5 hours ;-)
+
+Unfortunately, this only works with NASM right now :-(
+The gas version is still buggy. But it is encouraging to
+know that the generated intermediate code is probably
+correct, and it's just some assembler syntax bugs that
+need fixing.
+
+Today and yesterday I noticed the following problems: 
+
+	- There are various different expression contexts
+in which jumps are performed in a rather ad-hoc manner;
+This duplicates a lot of pain as far as multi-register
+objects are concerned, and these places should be unified
+
+	- It looks like the PowerPC emitter does not even
+take 32-bit ``long long'' comparisons into account AT ALL!	
+On a side note, the frontend always assumes that two
+subsequent partial operations on a ``long long'' first
+operate on the most significant 4-byte-chunk, and then on
+the lesser one - it is important to get this right on
+big endian systems like PowerPC as well
+
+	- long long right-shifting is probably also broken
+on x86, and signed/unsigned isn't handled correctly	
+	
+	- It seems that emit_copystruct() on PowerPC and
+MIPS suffers from the same bug as I found on x86 yesterday
+
+Nov 27 2006
+===========
+
+Made some progress getting GNU less to work. Now there are
+only four files left that have to be compiled with gcc (the
+rest with nwcc) to yield an apparently flawless (for the
+purposes of my tests) binary: forwback.c, linenum.c,
+prompt.c and search.c.
+
+I found it most alarming to discover that structure
+assignment was broken; When assigning to/from a struct that
+is a member of another struct which was obtained through
+some kind of pointer, e.g. by subscripting an array of
+structures, the struct pointer register was not recorded.
+
+Therefore, the code responsible for performing a memcpy()
+to carry out the copying operation in some contexts happily
+trashed that register, and ``less'' finally made it
+visible.
+
+It's funny how many bugs keep coming up. But this time I'm
+really determined to spend at least a month beating them up
+as I encounter them. I have no doubt that they will keep
+coming up even after all of this fixing, but then I'd
+probably want to get back to adding some new features
+because I could spend forever fixing all of these bugs...
+
+
+Nov 25 2006
+===========
+
+I did some bug fixing. Now GNU less 3.80 (22,000 lines of
+code) compiles, and partially works, but not quite. I've
+decided that it's about time to spend a month on debugging,
+thus the next release should be able to compile many big
+applications. It would be cool if I could get gcc to
+bootstrap with nwcc, but it's probably too much code. I'll
+see.
+
+
+Nov 18 2006
+===========
+
+About time to release nwcc 0.6.6! This release adds initial
+(and incomplete!) support for cross-compilation. In addition, 
+various critical bugs have been fixed.
+
+Unlike some other cross-compilers, nwcc does not need to be
+compiled for a particular target. Instead the default nwcc
+binaries can generate code for all supported platforms, and
+two simple command line switches permit you to choose your
+desired target architecture and ABI. Please read the
+CROSSCOMP file for details.
+
+Note that there are some problems that limit the usefulness
+of this feature:
+
+	- You have to handle assembling and linking yourself
+(nwcc only outputs the assembly code), and preprocessing
+also requires various conscious decisions on your part 
+
+	- This hasn't been tested very thoroughly (bug
+reports are very welcome!)
+
+	- PowerPC and MIPS are the most interesting
+candidates for cross-compilation supported by nwcc, but
+nwcc can currently only generate AIX code for PowerPC, and
+only 64bit (n32) code for MIPS
+
+Furthermore it is also possible that these profound changes
+have introduced new servere general bugs, though this
+doesn't seem to be the case. If you experience weird
+problems, it may be worth trying nwcc 0.6.5 (and sending me
+a bug report!)
+

@@ -1,0 +1,27 @@
+Sep 23 2009
+===========
+
+Finally it is time to release nwcc 0.8!
+
+This version is primarily a bugfix release. It corrects many bugs
+that were found while compiling Apache, PHP, Python and Ruby. Some
+of them were stunningly critical for x86 systems running *BSD or
+Linux in large file mode ("long long" structure member alignment
+was incompatible with gcc's, thereby breaking some uses of "struct
+stat" with 64bit members!).
+
+Additionally, nwcc has been ported to Linux/MIPS64 (little endian),
+and many basic MIPS bugs have been corrected - And a few SPARC-
+and PPC-specific ones as well.
+
+There are still various known compilation bugs on x86. For example,
+a few test cases in Tcl's test suite crash an nwcc-compiled Tcl
+interpreter, one file of Ruby contains a HUGE struct initializer
+list which causes nwcc to use way too much memory, and Perl seems
+to crash immediately upon program start (apparently in
+pthread_atfork(), possibly due to faulty preceding Pthread wrapper
+calls).
+
+However, I have taken a break from nwcc for a month, and now I feel
+it is time to get these important changes out now immediately.
+

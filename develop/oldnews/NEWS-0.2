@@ -1,0 +1,216 @@
+Feb 11
+======
+
+Found out that the hidden pointer used for structure returns is cleaned up by
+the callee, not caller. Geez. Words cannot describe the amount of time, energy
+and frustration this nonsense has cost me. But now expr.c can FINALLY be
+compiled correctly (except for the floating point stuff, of course.)
+
+Got lex.c to work as well (problem was use of ``long long'' in the glibc
+headers. There can be no doubt that full long long support is extremely
+important.) Now I can compile all of nwcc with itself and have the resulting
+binaries pass the entire test suite except for one file - sizeof.c - because
+there is still some buggy code generated for decl_adv.c.
+
+Oh, and I made K&R function definitions work (completely overlooked that one),
+except that implicit parameter declarations do not work yet;
+
+int
+main(argc, argv)
+	char	**argv;
+{
+	/* Does not work, need explicit ``int argc;'' too for now */
+
+I also started implementing ``long long'', but have so far only touched
+vreg_faultin().
+
+
+Feb 8
+=====
+
+Been much too lazy about nwcc development lately. Today I finally worked a
+bit on it again: I fixed conditional operators, such that
+
+a?  b?c:d  :e;
+
+and
+
+a? b,c: d;
+
+
+should work now. There may be more to come later today.
+
+
+Feb 1
+=====
+
+Fixed a lot of register allocation bugs and now nwcc can compile x86_gen.c
+correctly again. And not just that; As a side effect of this work, the icode.c
+code is correct enough to pass all tests as well! There are only three files
+of nwcc left for which nwcc cannot generate code which is correct enough to
+pass the test suite;
+ 
+    expr.c, lex.c, decl_adv.c (which still passes all tests except sizeof.c)
+
+
+Jan 31
+======
+
+Got nwcc to compile x86_emit_nasm.c correctly. Now x86_gen.c doesn't work
+anymore, thanks to an obscure bug in the code generated for the register
+allocator. I can't help but feel I took two steps back for one forward, but
+it may be a previously existent bug that's surfacing now because the code
+has changed.
+
+
+Jan 30
+======
+
+My illness is almost over, so today I looked a bit at nwcc again. Fixed a bug
+with code generation for x86_emit_nasm.c, which now passes all but 6 tests
+on my system.
+
+
+Jan 25
+======
+
+Got scope.c and x86_gen.c to work and made some icode.c progress.
+
+
+Jan 24
+======
+
+Got some more files to compile correctly with nwcc:
+
+    builtins.c, subexpr.c, token.c
+
+... the latter two of which are ``elephant'' files as well :-)
+
+Now 4 of the 10 biggest files pass all tests fully, icode.c passes many,
+and decl_adv.c passes all except one. The x86 backend, expr.c and scope.c
+files do not pass any though.
+
+I predict it will take another three days to get an entirely nwcc-compiled
+nwcc to pass all tests; four more to get it to compile itself again.
+
+It would take less time if this were more fun.
+
+
+Jan 23
+======
+
+Yet more progress! I got a partly nwcc-compiled nwcc (see Jan 22 news) to
+generate mostly correct code with four more files:
+
+    analyze.c, decl.c, defs.c, type.c
+
+This is very exciting because decl.c in particular contains some extremely
+long and involved functions - in fact it's the second largest file of nwcc -
+and analyze() isn't too short either. Furthermore, an nwcc with an nwcc-
+compiled decl_adv.c *almost* passes all tests as well! Only a single file
+(sizeof.c) cannot be compiled correctly. Even when compiling the largest
+file of nwcc with nwcc - icode.c - the output still passes many tests!
+    
+Now there are 20 nwcc-compiled and 11 gcc-compiled files that, when linked
+together, pass all tests (debug.c doesn't count because I compile with
+debugging stuff disabled.)
+
+
+Jan 22
+======
+
+The fun of debugging the nwcc-compiled nwcc has begun! I don't know about you,
+but I find the recursion of compiling compilers confusing at times, so let me
+put my current experiments into really simple terms:
+
+    Step 1: I compile nwcc using gcc
+
+    Step 2: I make another copy of the nwcc source code and compile some
+            of that code using gcc, and some using the nwcc I previously
+            built with gcc
+
+    Step 3: I take the latter nwcc - the nwcc that contains some nwcc-generated
+            and some gcc-generated code - and use it to run the test suite
+            (test.sh)
+
+The reason I compile only some of the nwcc code using nwcc itself is that the
+nwcc output for many of those files is too buggy. If I compile the following
+files with nwcc:
+
+    attribute.c, backend.c, cc1_main.c, cc_main.c, control.c, driver.c,
+    error.c, exectools.c, functions.c, misc.c, n_libc.c, numlimits.c, reg.c,
+    stack.c, symlist.c
+
+... and all others with gcc, then the resulting nwcc binaries pass all tests in
+test.sh! This means that the code generated for those files listed above is in
+many respects correct, but it doesn't mean it's bug free; The test suite is way
+too small to exercise many code paths. The most obvious problem I've noticed is
+that the driver.c code loops forever if an error is encountered, so nwcc1 is
+invoked over and over again.
+
+It's rather sobering to see that NOT ONE of the ten biggest nwcc files can be
+compiled correctly enough to pass the very first test in test.sh, but nothing
+else was to be expected.
+
+Naturally, I cannot predict how long it will take to get everything to work,
+but considering that so many files (half of them) already work in part, it
+looks like nwcc already gets a lot of stuff right.
+
+(Note that I'm doing these tests on SuSE 8.2; The results on newer Linuxes may
+be different, and probably not for the better.)
+
+
+Jan 22
+======
+
+Finally! I got nwcc to compile itself! I fixed the assembler errors, the file
+that made nwcc crash (problem was that it incorrectly attempted to promote the
+operands of the comma operator), and a lot of linking problems. The vast
+majority of files compiles totally cleanly, but expr.c in particular causes a
+lot of assembler warnings about incorrect operand size specifications; I'm
+guessing these warnings relate to bad floating point code. But it's not
+surprising at all to see that floating point still needs a lot of work, so I
+don't mind it.
+
+Anyway, as I predicted, the nwcc-compiled nwcc is totally riddled with bugs. I
+haven't even looked at the code yet, but when attempting to use it to compile
+a simple ``hello world'' without any header files:
+
+int
+main(void) {
+        puts("hello world");
+}
+
+... the program immediately enters an infinite loop printing
+
+nwcc_ng/nwcctest [0]> ./nwcc hello.c
+hóÿ¿: No such file or directory
+hóÿ¿: No such file or directory
+hóÿ¿: No such file or directory
+hóÿ¿: No such file or directory
+hóÿ¿: No such file or directory
+hóÿ¿: No such file or directory
+hóÿ¿: No such file or directory
+hóÿ¿: No such file or directory
+(.......)
+
+:-)
+
+This is actually much worse an effect than I had expected, but I guess I should
+be happy I got it to compile at all (and in fact I am!)
+
+
+Jan 21
+======
+
+Again one month has passed since the last release, nwcc 0.1. The size has grown
+from ~21000 to ~23000 lines of code. Probably the most telling indicator of
+progress is the fact that nwcc can now almost compile itself! There is only a
+single file left that nwcc cannot swallow (exectools.c). The other files all
+compile, but as you'd expect, there are still many bugs in the output. In
+particular, some files cause assembler errors, so it's not possible to check
+them for linkability and semantic correctness yet.
+
+(A history of some of the things that were implemented since Dec 20 can be
+found in the file NEWS-0.1.)
+

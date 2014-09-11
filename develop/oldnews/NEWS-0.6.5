@@ -1,0 +1,414 @@
+Nov 17 2006
+===========
+
+Today I got infinite self-compilation on AMD64 working
+again. The primary problem was that structure alignment
+STILL wasn't working properly... You'd think that after
+all of these structure bugs during the past year it would
+finally be working! I guess not.
+
+The problem was that nwcc inserted padding with respect to
+the alignment of the first structure member, but not the
+whole struct!
+
+Example:
+
+struct foo {
+	int	x;
+	void	*p;
+	int	y;
+};	
+
+On AMD64 this struct requires 8 byte alignment, i.e. needs
+to begin at an 8-byte-aligned address. This means that 4
+bytes of padding have to be inserted after ``y''. What
+nwcc was doing, is to look at the alignment requirement of
+``x'', i.e. the first member, which is 4. But it should
+have really looked at the alignment of the whole struct,
+which is 8!
+
+Interestingly the alignment code for MIPS and PowerPC got
+this particular case right (though it is still unclear
+whether its ugly and dangerous looking approach to
+alignment is correct in general.)
+
+
+Nov 13 2006
+===========
+
+I found an embarrassing bug in the use of the typemappings
+(it basically wasn't used at all), and now this stuff
+seems to be working. I also added support for preprocessed
+*.i files. Today I finally also backported all typemapping
+stuff to the preprocessor nwcpp, which only took me about 
+an hour.
+
+Now I guess I still need to handle assembling and linking
+a bit, or else demand -S (only generate asm output) when
+cross-compiling.
+
+My changes also appear to mostly work on FreeBSD/x86 and
+Linux/AMD64, but I have yet to test IRIX/MIPS, AIX/PPC and
+OpenBSD/x86, and maybe Solaris/x86. An unfortunate side
+effect of my work is that compiling gxemul with nwcc now
+yields a binary that is buggier than with previous nwcc
+versions. This may indicate that new fatal bugs have been
+introduced. I'll have to do more general correctness
+testing before I can release, I guess. However, it is
+always possible that some bugfixes uncover other bugs that
+had previously gone unnoticed, so maybe that's the case
+with gxemul.
+
+
+Nov 11 2006
+===========
+
+I got a LOT of stuff done today. Most notably I've fixed
+all of the emitters to use cross_print_value_by_type()
+and cross_print_value_chunk() in almost all places where
+it matters. There are a few remaining problems,
+particularly on PowerPC and MIPS, but they aren't many.
+
+This stuff appears to work flawlessly with gas and nasm
+on x86, at least on SuSE. However, I haven't tested it
+on any other platforms, so beware. I found a few bugs
+in the old code while enabling cross-compilation, but
+may also have introduced new ones.
+
+I haven't done any more cross compilation testing, except
+compiling icode.c for all supported platforms on x86 -
+and that works! (though I haven't checked the output for
+correctness.)
+
+If I manage to stay as focused tomorrow as a was today I
+should be able to release nwcc 0.6.6! (though the amount
+of platforms I have yet to test my changes on really
+bothers me.)
+
+
+Nov 10 2006
+===========
+
+Cross-compilation is now already partly working, at
+least on one system. I can already use (on a SuSE 8.2/
+x86 box):
+
+	./nwcc1 test.c
+	./nwcc1 test.c -arch=amd64
+	./nwcc1 test.c -arch=ppc
+	./nwcc1 test.c -arch=mips
+
+... to generate assembly code for these four different
+architectures. This is freakin' cool! Really, makes you
+forget the difficulty with which cross-compilation
+works in gcc. However, I haven't tested this much yet,
+and because I haven't even touched the emitters,
+this will most certainly break when e.g. outputting
+large 64bit target ``long'' values on a 32bit host.
+
+I have been under the impression that I need to
+backport all constant expression evaluation stuff to
+nwcpp because the preprocessor supposedly also needs
+to be aware of differences between host and target.
+
+But right now, not quite having thought it through, it
+appears like there will only be problems that are much
+more subtle than I had expected. Consider an expression
+involving very large (64bit) numbers. The ``first fit''
+type selection C uses for numbers will ensure that
+the preprocessor correctly picks the type ``long long''
+on a 32bit host! So a lot of things of that kind should
+just work.
+
+Things I still have to do before I can make a new
+release:
+
+	- Fix all the emitters (obviously)
+
+	- Handle assembler/linker invocations
+
+	- Backport this stuff to nwcpp
+
+	- Pass arch/abi flags to the preprocessor
+
+	- Fix some address calculation in evalexpr.c
+
+	- TEST, TEST, TEST!! Make sure normal
+ 	  compilation still works on all supported
+	  platforms. Then ideally make cross-comp
+	  work between any two supported platforms.
+	  Then look into multiple ABI/default
+	  settings on PPC64
+
+Maybe I'll manage to get it all done this weekend!
+
+
+Nov 8 2006
+==========
+
+Been lazy again :-( That was because I had to fix a
+stupid nwcpp bug, and preprocessing tends to bore me.
+But now it's fixed and finally the following snippet
+works as expected:
+
+	#define foo(x) #x
+	#define bar(x) foo(x)
+	#define baz 123
+	puts(bar(baz));
+
+
+I've compiled a list of stuff to do for cross-
+compilation, and it seems like I may complete the task
+soon.
+
+Oct 28 2006
+===========
+
+I tested my changes on FreeBSD/x86 and Debian/AMD64, and
+fixed the bugs that then surfaced. The most frustrating
+one was that this:
+
+     char buf[128];
+     char buf2[128];
+     char *bufp, *p;
+     
+     p = bufp - buf + buf2;
+
+... still wasn't working. There are apparently still a lot
+more type bugs than I was aware of. Another candidate
+for such bugs that I haven't checked is compound
+assignment. And because unevaluated expressions are still
+broken in many ways, I can't even check this using:
+
+     long x;
+     printf("%d\n", (int)sizeof(x += 123));
+
+... on AMD64 (my fear in this case is, of course, that
+sizeof may end up getting an ``int'' rather than a
+``long''.) But I'll take a closer look at this tomorrow.
+
+Anyway, self-compilation with the new partly cross-
+compilation aware code now works on SuSE/x86, FreeBSD/x86
+and Debian/AMD64. Rene Rebe's minised now finally also
+appears to be correctly compilable on AMD64.
+
+I'm happy to get some bugfixing done because this is a
+good time to focus on such things, since cross-compilation
+between already supported architectures does not add
+anything of interest for most potential nwcc users,
+including myself (again, this would be different if there
+were support for embedded architectures.)
+
+I may be done with initial cross compilation support in
+one or two weeks. It's not rocket science, really.
+
+
+Oct 27 2006
+===========
+
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!  THIS VERSION STILL ONLY HAS BEEN     !!!
+	!!!  TESTED ON SuSE 8.2/x86               !!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+It is amazing how many very basic bugs still linger in
+nwcc. Today I found that the following popular comedy
+type of code:
+
+        int		foo = -1;
+        unsigned	bar = 10;
+
+        if (bar < foo) {
+                puts("uh huh what's going on here");
+        }
+
+... didn't work right with nwcc! The trick is of course
+that the usual arithmetic conversions will cause ``foo''
+to be converted to an unsigned int, thus making it a
+very large value before the comparison - UINT_MAX in
+fact - and so it appears that ``-1 is bigger than 10''!
+
+nwcc got the conversion right, but it accidently used
+the result type of the expression ``foo < bar'' - i.e.
+signed int - when performing the branch. This should be
+fixed now.
+
+I have also made a LOT of cross compilation progress.
+numlimits.c now uses the target information from
+typemap.c, and token.c also reads numbers in a mostly
+host/target transparent fashion. There is now always
+some ``cross compilation'' going on, but currently
+host and target have to be identical. For instance, when
+dealing with the type ``long'' on x86, nwcc often uses
+``int'' instead, which on x86 has identical properties.
+This can be seen as a demonstration of how the code will
+emulate types between different platforms.
+
+In theory it should be possible to change the target,
+and still have all things relating to numeric tokens
+and constant expression evaluation work.
+
+But in practice I also need to get a cross-compilation-
+aware preprocessor (most likely nwcpp ... this will
+require backporting all token.c/numlimits.c/evalexpr.c/
+typemap.c changes into it), cross-compilation-aware
+backends, and finally a command line switch for
+choosing the target. And it may always be possible that
+some or all target information tables are wrong in some
+or all ways (though this one seems quite unlikely.)
+
+By the way, 8bit and 16bit (embedded) architectures are
+not taken into account yet, but those are the ones that
+would benefit the most from cross-compilation. I'll
+probably make the next target SPARC/Solaris, and then
+PA-RISC/HP-UX, but afterwards I should do a few smaller 
+devices as well.
+
+
+
+Oct 21 2006
+===========
+
+I'm now almost done with integrating the new type-mapped
+stuff into constant expression evaluation. It felt quite
+good to see the goofy DOOP()/DOOP4ANYI()/etc macros
+disappear, and the replacement already does some slightly
+better error checking. This seems to work, but
+
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!   I HAVE ONLY TESTED IT ON SuSE 8.2   !!!
+	!!!   ON X86                              !!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+So I bet these rather profound changes break at least a
+few supported platforms - maybe PPC64 and AMD64 - and
+am thus uploading them as nwcc_very_unstable.tar.gz.
+
+This was probably just the easy part. The hard part will
+be to find all of the places I need to change before I
+can even attempt the first cross compilation run. I
+probably also need to get nwcpp to work well and make it
+use the new host-platform-independent numbers stuff. 
+
+
+Oct 15 2006
+===========
+
+I wrote some of the basics for cross-compilation. Most
+stuff relating to type mappings and the core of constant
+expression evaluation should be done now (but nothing has
+been tested!)
+
+Once I have restructured evalexpr.c to use theses
+primitives, there are still a few things to change:
+
+       - Reading of numbers in token.c
+       - All of numlimits.c
+       - backend->get_sizeof_type() (trivial) and perhaps
+         other general backend stuff
+       - All emitter parts that deal directly with the
+         numbers, such as initializer output      
+
+Especially the last point is going to take a fair amount
+of work because of the sheer number of emitters (there
+are 6 now.)
+
+Then I still have to create a command line option to
+select the target architecture and figure out how to deal
+with the preprocessor/assembler/linker when host and
+target differ. I'm favoring leaving assembler/linker
+invocations to the user at the beginning. I want
+cross-compilation to be controlled by a command line
+option, such that the command sequence
+
+        nwcc -target=amd64 foo.c -o foo_amd64
+        nwcc -target=mips foo.c -o foo_mips
+        nwcc -target=x86 foo.c -o foo_x86
+
+... with a single nwcc/nwcc1 binary generates three
+binaries for three different architectures.
+
+Therefore, I'll have to eventually write my own cross-
+assembler that works like nwcc in this regard, because
+binutils need to be compiled specifically for every
+target.
+
+
+Oct 12 2006
+===========
+
+I've fixed a couple of bugs pointed out by Rene Rebe, and
+added an --installprefix option to the configure script.
+This seems particularly interesting for AIX because now
+it should be possible to have mostly seamless 32bit and
+64bit compiler coexistence;
+
+	./configure
+	make
+	make install
+	make clean
+	./configure --installprefix=/usr/local/ppc64
+	make ABI=-maix64
+	make install
+
+On a 64bit AIX system, this should install a 32bit nwcc
+to /usr/local/nwcc, and a 64bit one to
+/usr/local/ppc64/nwcc. I haven't tested this yet, but
+I expect it to work. I hope these changes don't break
+anything on any platforms (maybe because of nonportable
+sh code, or broken shells? Solaris sh anyone??!) Note
+that it is essential to supply an absolute path to
+configure. E.g. if you want to install to a current-
+working-directory-relative path, use $PWD;
+
+	./configure --installprefix=$PWD/dir
+
+
+Oct 8 2006
+==========
+
+Today is a good day to release nwcc 0.6.5! There are three
+primary additions of interest in this release:
+
+   - The GNU assembler is supported on AMD64
+   - The compiler has been ported to 64-bit AIX/PowerPC
+   - IRIX is supported again
+
+The GNU assembler can assemble much faster than yasm with
+nasm-syntax on AMD64. In order to use it instead of yasm,
+you can use the NWCC_ASM environment variable and -asm
+command line option, as documented in the USAGE file.
+
+Many thanks go to Frank Fegert, who provided 64-bit
+PowerPC access and patiently booted the machine whenever I
+needed access.
+
+The 64-bit PowerPC port has raised a few new difficulties.
+In particular, it is currently not possible to build nwcc
+with support for both 32-bit and 64-bit PPC ABIs, because
+that would require some support for cross-compilation
+(which is among the next things nwcc will get.)
+
+To build a 32-bit nwcc on a 32-bit or 64-bit PowerPC
+machine, just type ``make''. To build a 64-bit nwcc on a
+64-bit PowerPC machine, type ``make ABI=-maix64''. There
+is no pleasant way for 32-bit and 64-bit compiler binary
+coexistence; You have to use the NWCC_CC1 environment
+variable to have more than one compiler on a system.
+
+No 64-bit compiler binary is provided, in part because
+nwcpp does not fully work with PPC64 yet (the compiler
+thus depends on GNU cpp, the availability of which means
+it can be compiled from source anyway.)
+
+The PPC64 port doesn't have 64bit integer <-> floating
+point conversion yet.

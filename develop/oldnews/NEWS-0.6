@@ -1,0 +1,165 @@
+April 24
+========
+
+I've mostly spent the past couple of days getting gxemul to work with
+nwcc. The emulator already compiles, of course, and the hardest part
+is fixing all of those bugs that show up when it runs. Some very basic
+initialization already works:
+
+
+nils/gxemul-0.3.8 [1]> ./gxemul -e 3max -d ../sys.img
+GXemul-0.3.8   Copyright (C) 2003-2006  Anders Gavare
+Read the source code and/or documentation for other Copyright messages.
+
+Simple setup...
+    net: simulating 10.0.0.0/8 (max outgoing: TCP=100, UDP=100)
+        simulated gateway: 10.0.0.254 (60:50:40:30:20:10)
+    machine "default":
+        memory: 64 MB
+        OLD bintrans: i386, 16 MB translation cache at 0x40673000
+        cpu0: R3000 (I+D = 4+4 KB)
+        [ exception TLBS <tlb> vaddr=0xbfc04000 pc=0x00000000 ]
+	( .... many more exception messages .....)
+
+        machine: DECstation 5000/200 (3MAX, KN02) (25.00 MHz)
+        bootstring(+bootarg): boot 5/rz0/ -a
+        diskimage: ../sys.img
+            SCSI DISK id 0, read/write, 0 MB (0 sectors)
+        DEC boot: loadaddr=0xa0600000, pc=0xa0600000: 15[ exception TLBS <tlb> vaddr=0xa0600000 pc=0x00000000 ]
+        [ exception TLBS <tlb> vaddr=0xa0600400 pc=0x00000000 ]
+        [ exception TLBS <tlb> vaddr=0xa0600800 pc=0x00000000 ]
+        [ exception TLBS <tlb> vaddr=0xa0600c00 pc=0x00000000 ]
+        [ exception TLBS <tlb> vaddr=0xa0601000 pc=0x00000000 ]
+        [ exception TLBS <tlb> vaddr=0xa0601400 pc=0x00000000 ]
+        [ exception TLBS <tlb> vaddr=0xa0601800 pc=0x00000000 ]
+        [ exception TLBS <tlb> vaddr=0xa0601c00 pc=0x00000000 ]
+        [ exception TLBS <tlb> vaddr=0xa0601d00 pc=0x00000000 ]
+         blocks
+        starting cpu0 at 0x80000080
+-------------------------------------------------------------------------------
+
+Killed
+nils/gxemul-0.3.8 [137]>
+
+
+Obviously, that 0x00000000 program counter value doesn't look very
+trustworthy, and the emulator is getting killed by Linux because it
+allocates too much memory (presumably because nwcc got some sort of
+gxemul loop wrong that calls malloc().)
+
+I've also found nwcc's memory usage to be a very severe problem; there
+is one (generated) file in gxemul that, after preprocessing, yields a
+40.000 lines long translation unit. The system I'm doing these tests
+on only has 256mb of virtual swap space, so I cannot run X while
+compiling this file because there isn't enough memory for nwcc (gcc
+can still compile it even if X is running!)
+
+So I've looked into improving memory usage. I've so far only touched
+the lexical analyzer and parser, so it's still looking quite bad,
+albeit a bit less so.
+
+
+April 20
+========
+
+I fixed a lot of bugs and got gxemul-0.3.6.2 to compile (after fixing
+a few nonstandard features used by it.) I haven't been able to test
+the output yet because I get a linker error (though this seems to be a
+problem with gxemul, not nwcc. I haven't checked whether the problems
+are still present in up-to-date gxemul versions.)
+
+I have also taken the liberty of removing the -gnuheaders option and
+processing all code as GNU C by default. This makes it MUCH easier to
+use nwcc as a drop-in replacement for build scripts that previously
+used gcc. The -ansi option is accepted, but just ignored currently.
+I'll look into adding a strict standard mode some time soon.
+
+The -gnuheaders change has no consequences for BSD systems because
+the BSD headers have always been processed with __GNUC__ defined.
+This is because the headers often ignore compilers that aren't gcc
+compatible. For example, in sys/cdefs.h FreeBSD has
+
+#define __aligned(x) __attribute__((__aligned__(x)))
+
+... if used with a gcc or Intel compiler, but NO definition at all is
+provided for other compilers! And headers like signal.h assume the
+macro is always defined, so they can't be used with non-GNU compilers.
+
+With glibc, the story is different, because it very cleanly supports
+non-gcc compilers. However, defining __GNUC__ by default has already
+shown me some problems nwcc had with typeof() used in the headers;
+I've fixed those, but I'm afraid nwcc may now still possibly be less
+usable with glibc - until I've fixed all other GNU incompatibilites
+that may show up over time.
+
+
+April 12
+========
+
+I got back to doing some platform-independent work. In particular, I
+fixed the two top problems on my feature wishlist:
+
+   - Local ``extern'' declarations (this was needed for some
+     very questionable OpenBSD header functions)
+   - Conditional operator typing (this didn't get null pointer
+     constants and usual arithmetic conversions right)
+
+I also fixed some more ``long long'' bugs (long long STILL seems to
+be riddled with tons and tons of problems.)
+
+As a result, nwcc can FINALLY compile itself on OpenBSD 3.8.
+Unfortunately, there are still some problems with long long constants
+that show up with nwcc-compiled nwcc binaries processing LLONG_MAX and
+ULLONG_MAX constants, such that the third nwcc self-recompilation on
+OpenBSD and FreeBSD breaks.
+
+Now 88 (out of 186) files of gxemul-0.3.6.2 can be compiled with nwcc. 
+
+(Today was the first time that I used the amount of generated object
+files of gxemul to judge the stability of new changes. This has proven
+far more effective than compiling nwcc. It's now about time to get
+gxemul to work, which may take forever.) 
+
+
+April 7
+=======
+
+A new release - nwcc 0.6! I have spent the past three weeks adding a MIPS
+backend to nwcc. This backend currently only works with IRIX and only
+supports the n32 ABI (n64 support is there, but it hasn't been integrated
+and tested yet, so it's probably full of bugs.)
+
+This backend was more of an educational exercise than anything else because
+I do not expect MIPS and IRIX to have a bright future. I chose MIPS because
+it employs a fairly pure RISC design, and because I have a nice MIPS manual
+and a MIPS computer.
+
+The current status is that nwcc can compile itself successfully on MIPS,
+but as you'd expect, there are still some problems left. Most notably:
+
+     - Though even an nwcc-compiled nwcc can compile nwcc on MIPS, one
+       of the test suite files triggers a bug (gnu.c)
+
+     - As stated above, only n32 is supported. This means that a 64bit
+       processor is required, and that there is no chance nwcc will support
+       Linux/BSD on MIPS any time soon (because they use the o32 ABI)
+
+     - nwcc is incompatible with the n32 ABI regarding structures passed by
+       value; n32 specifies a complex protocol for passing the first members
+       of a struct in registers - nwcc passes every struct entirely on the
+       stack
+
+     - The C89 type ``long double'' occupies 16 bytes in 64bit MIPS and
+       operations on it have to be software-emulated. I may choose to just
+       use libgcc for this in the future, but for now, nwcc just pretends
+       that ``long double'' is the same as ``double'' (which may obviously 
+       cause a lot of trouble.)
+
+The changes I made during the past couple of weeks also seem to have
+improved nwcc's robustness on x86, but I haven't done any testing beyond
+self-compilation to verify this assertion.
+
+(nwcc is now around 32.000 lines of code.)
+
+
+

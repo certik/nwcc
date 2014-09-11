@@ -1,0 +1,51 @@
+Aug 17 2014
+===========
+
+I'm releasing nwcc 0.8.3 to update my mail address - if you tried to contact
+me by using the old address (nils<at>gnulinux<dot>nl) and received no response,
+please send your message to the new one again (nweller<at>tzi<dot>de). This
+version also contains a few AMD64 fixes that had so far only been released in
+snapshot "nwcc_0.8.2-120726".
+
+Note that this release has NOT been tested on most supported platforms. Please
+report any problems you may encounter.
+
+nwcc development has been on ice due to lack of time, but bug reports, feature
+requests and questions are of course still welcome!
+
+Apart from the AMD64 problems that have been solved in 2012, there are still
+open AMD64 problems that mostly pertain to floating point and ABI structure
+incompatibilities. Some work has gone into trying to fix bitfield ABI problems
+on RISC architectures, but this has not been successful (so the relevant code
+changes aren't included in this version).
+
+
+Jul 26 2012
+===========
+
+Looking into the whole thing, I was shocked to find that nwcc on AMD64 still
+has quite a lot of really fundamental issues, which surprised me even though
+it should have been expected because I've been doing most nwcc development
+and testing on x86.
+
+A lot of things have been fixed but it's not clear at this point how much
+else will come up, I address things as I encounter them right now (position-
+independent code seems very weak, Tcl crashes, structs are still not ABI
+compatible with gcc, cross-compilation for x86 in a mixed-arch environment
+isn't properly supported (-target=x86 works of course, but -m32 doesn't
+and the linker and assembler aren't invoked)).
+
+
+Jul 25 2012
+===========
+
+I just picked up nwcc again because I've run into a Linux AMD64 system on which
+nwcc 0.8.2 doesn't work because it does not use the correct library directories.
+This has been a known problem for some time (reported, among other bugs, by Urs
+Janßen in 2011) but I hadn't gotten around to fixing it so far.
+
+The configure script now contains a preliminary library directory check which
+should fix the problem. During the latest AMD64 tests, various severe ABI
+problems have been discovered and will be addressed soon as well.
+
+

@@ -1,0 +1,227 @@
+Oct 7 2006
+==========
+
+I spent the better part of today getting the PPC64 stuff to work.
+It took a long time before I even noticed that supporting
+multiple ABIs on one platform in itself poses a cross-
+compilation type of problem; gcc by default generates 32bit
+code even on 64bit AIX systems, and for good reasons. And such
+a 32bit nwcc cannot easily generate 64bit code without some
+awareness of host/target differences.
+
+Thus my current plan is to build two compiler binaries on 64bit
+AIX for now, and have nwcc invoke the proper nwcc1 depending on
+the ABI setting. Later when I have cross-compilation, which is
+what I intend to do for the next release, I shouldn't have to
+deal with such inconveniences anymore.
+
+nwcc/PPC64 can already compile itself, and the resulting
+compiler can ALMOST compile itself again (there's only one 
+visible error in one file.) If all goes well, I hope to release
+0.6.5 tomorrow.
+
+
+Oct 6 2006
+==========
+
+I made a big step forward with nwcc/nwcpp on IRIX; The test
+suite passes with nwcpp now, and a lot of files of nwcc itself
+can be compiled as well. The primary problem was that the IRIX
+headers need an immense number of predefined macros from the
+preprocessor. GNU cpp passes 80 or so (I kid you not.) So I
+added the 15 or 20 most necessary ones of those to nwcpp as
+well. That made a lot of stuff work, as I said, however a few
+files still cause nwcc to crash when preprocessed with nwcpp.
+
+I'm hoping that all of my problems will go away if I add some
+more GNU cpp macro definitions :-)
+
+I'll try this out tomorrow or the day after tomorrow. Then it
+shouldn't take too long before I can make nwcc binaries for
+IRIX. Then I just need to get PPC64 support working and can
+then make a new release.
+
+Afterwards I can finally begin with cross-compilation, and
+maybe do a PA-RISC backend.
+
+(I should somewhere down the road add N64 and especially O32
+support for MIPS as well. The latter would permit me to get
+nwcc to work with Linux/BSD on MIPS, which are presumably
+going to survive IRIX.)
+
+
+Oct 5 2006
+==========
+
+Now 52 of 71 test files pass in 64bit PowerPC mode. Yesterday I
+said that only 20 passed, but that was just an estimate, and
+probably totally off because I didn't change very much today.
+
+Anyway, 64bit loads/stores are hopefully complete now, and some
+arithmetic operations already work as well. I hope to finish this
+stuff this weekend or next week.
+
+I also gave some thought to cross-compilation and have devised a
+model for constant expression evaluation. There are 3 cases;
+
+    - An arithmetic operation on a target type perfectly maps to
+      the same host type
+      
+    - An operation on a target type perfectly maps to a different
+      host type
+      
+    - An operation needs software emulation
+
+So then we do
+
+	void	
+	add_signed_int(void *res, void *dst, void *src) {
+		*(int *)res = *(int *)dst + *(int *)src;
+	}	
+
+	etc, for all types and operations...
+
+	struct type_mapping {
+		void	(*add)(void *, void *, void *);
+		void	(*sub)(void *, void *, void *);
+		...
+	} *type_map[N_TYPES];
+
+	and have a type_mapping for every arithmetic type, and map
+	all target types to corresponding host types and then do
+
+	if (type_map[datum->type->code] != NULL) {
+		switch (op) {
+		case TOK_OP_ADD:	
+			type_map[datum->type->code]->add(result,
+				datum1->value,
+				datum2->value);
+			break;
+			...
+	} else {
+		/* use software emulation */
+	}	
+
+Looks simple, right? Right.
+
+On my way home from work today I also got another idea: Library functions
+for stack tracing and software watchpoints. I mean it would be cool if
+you could do
+
+	void handler() { puts("variable was modified!!!"); }
+
+	int	x;
+
+	...
+	nwcc_softwatch(&x, handler);
+
+... and then your handler is called every time x is modified. The first
+idea I got is so obvious, it's amusing. Just make the page of ``x''
+read-only, then catch SIGSEGV, then determine (from the signal handler)
+whether the faulting address is one we're interested in, and if so call
+handler(). Then make the page writable again, insert a debug trap
+instruction just one instruction beyond the current program counter, and
+return from the signal handler. Then the instruction will be restarted
+and executed as usual, and afterwards we can use the debug trap to make
+the page read-only again.
+
+The only problem (and it's an admittedly big one) is that it seems I
+will have to decode the faulting instruction to obtain the target memory
+address. That makes everything nonportable and possibly very difficult
+for x86 with on-memory instructions.
+
+Phew, so many ideas, so little coding time. I hope I get some of this
+stuff done the next couple of weeks ;-)
+
+
+Oct 3 2006
+==========
+
+I did some work on PPC64/AIX support on the past couple of weeks
+(many thanks to Frank Fegert for prividing 64bit PowerPC access!)
+and now about 20 of 71 test files already pass in 64bit mode.
+
+I recently also made current nwcc work on IRIX, but haven't
+managed to get nwcpp to work right with the system headers yet
+(presumably I just haven't found the right set of feature
+selection macros yet.)
+
+Sep 17 2006
+===========
+
+I finally got around to adding gas support for AMD64, which can
+already compile itself, and is apparently about ~50% faster than
+nwcc/yasm. This took the whole evening of today and another
+evening a couple of days ago to write, so I'm quite pleased with
+these early results.
+
+However, I have only tested this on Debian/amd64, so it may not
+work on FreeBSD/amd64 (on which, by the way, I have been told
+nwcpp does not run well either.)
+
+I found a few AMD64 code generation bugs that seem to affect
+nwcc/yasm as well, but I'll fix those later. I got a replacement
+power supply for my Octane now (this is the second time in two
+years that an Octane power supply of mine died!), so if all goes
+well I'll be porting nwcc_0.6.4 with nwcpp to IRIX tomorrow and,
+if necessary, the day after tomorrow. Then I will make IRIX nwcc
+binaries. Then I will look into making the N64 ABI support run
+(there are also a lot of MIPS bugs left, of which I may choose
+to fix some.)
+
+Afterwards I'll hopefully be able to write 64bit PowerPC support
+for AIX.
+
+
+Sep 10 2006
+===========
+
+Unbelievable, like the last time I made I release, I messed it
+up big time: I forgot to change install.sh to use the new
+extlibnwcc.o rather than libnwcc.so :-(
+
+So once again I am forced to upload a fixed version.
+
+
+September 9 2006
+================
+
+Time for a new release - 0.6.4! This release primarily adds two
+things:
+
+	- PowerPC floating point support
+	- A completely new preprocessor
+
+Also, Solaris 10/x86 has joined the list of supported platforms
+(but currently only gas is supported), and various PowerPC bugs
+have been fixed. 
+
+Other than that, there are very few platform-independent bug
+fixes and changes, so if you are only interested in usability
+and correctness improvements since 0.6.3, you can already stop
+reading at this point. It is worthy of note that this release
+explicitly has NOT been tested on IRIX/MIPS! If it doesn't work
+on that platform, use 0.6.3 instead (0.6.5 will definitely have
+IRIX support.)
+
+The preprocessor (nwcpp) is intended to serve as a replacement
+for GNU cpp, which nwcc had been using previously, on systems
+where GNU cpp isn't installed. In particular, among the systems
+supported by nwcc, IRIX and AIX do not come with gcc (and thus
+GNU cpp) installed by default; nwcc binary packages using nwcpp
+to achieve gcc-independence are now available for AIX, and will
+soon be available for IRIX.
+
+However, nwcpp is way too half-baked, so GNU cpp is still
+preferred if available. nwcpp is slower and uses tons more
+memory, has way too many bugs and too few features. It could
+have been in better shape had I spent some more time on it, but
+my motivation for doing this work started declining rapidly
+very early on. Now I haven't been doing any nwcc development
+at all for almost two weeks because I'm sick and tired of
+having to deal with preprocessing. Thus I'm pushing this half-
+baked version out so that I can move on and do something fun
+instead.
+
+(In my defense, nwcc/nwcpp can at least compile itself on all
+supported platforms.)

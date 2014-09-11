@@ -1,0 +1,271 @@
+# LDFLAGS = -L/usr/local/lib -lefence
+# Add to CFLAGS:
+# -pg for profiling
+# -DDEBUG for lexical analysis
+# -DDEBUG2 for declaration parsing
+# -DDEBUG3 for expression parsing (type promotions 'n stuff)
+# -DDEBUG4 for intermediate code display
+# -DDEBUG6 for register logging
+# -DNO_EXPR to disable expression parser
+
+CPPOBJ = \
+defs.o \
+error.o \
+lex.o \
+token.o \
+type.o \
+libnwcc.o \
+evalexpr.o \
+n_libc.c \
+cpp_main.o
+
+CCOBJ = \
+cc_main.o \
+cfgfile.o \
+driver.o \
+exectools.o \
+n_libc.o \
+misc.o
+
+CC1OBJ = \
+amd64_emit_gas.o \
+amd64_emit_yasm.o \
+amd64_gen.o \
+analyze.o \
+attribute.o \
+backend.o \
+builtins.o \
+cc1_main.o \
+control.o \
+debug.o \
+decl.o \
+decl_adv.o \
+defs.o \
+dwarf.o \
+error.o \
+evalexpr.o \
+expr.o \
+functions.o \
+icode.o \
+icodeinstr.o \
+inlineasm.o \
+lex.o \
+libnwcc.o \
+n_libc.o \
+mips_emit_as.o \
+mips_gen.o \
+misc.o \
+numlimits.o \
+power_gen.o \
+power_emit_as.o \
+reg.o \
+scope.o \
+sparc_emit_as.o \
+sparc_gen.o \
+stack.o \
+subexpr.o \
+symlist.o \
+token.o \
+type.o \
+typemap.o \
+x86_gen.o \
+x86_emit_gas.o \
+x86_emit_nasm.o \
+x87_nonsense.o \
+zalloc.o
+
+SNAKEOBJ = \
+snake_driver.o \
+snake_main.o
+
+SWEEPEROBJ = \
+sweeper.o	
+
+
+all:
+	make nwcc $(BUILDCPP)
+
+nwcc: $(CCOBJ) $(CC1OBJ) $(SNAKEOBJ) $(SWEEPEROBJ) libnwcc.o
+	$(CC) $(CFLAGS) -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc.o
+	$(CC) $(CFLAGS) $(PICFLAGS) -DEXTERNAL_USE libnwcc.c -c -o dynextlibnwcc.o
+	$(CC) $(CFLAGS) $(CCOBJ) -o nwcc $(LDFLAGS)
+	$(CC) $(CFLAGS) $(CC1OBJ) -o nwcc1 $(LDFLAGS)
+	$(CC) $(CFLAGS) $(SNAKEOBJ) -o snake -lpthread
+	$(CC) $(CFLAGS) $(SWEEPEROBJ) -o sweeper
+	:
+	: All done, you may type "make install" now!
+	: You should also do "make test" to ensure that
+	: nwcc really works on this system.
+	
+#	$(CC) $(CFLAGS) $(CPPOBJ) -o nwcpp $(LDFLAGS)
+#	 May 18 2007: No automatic test run anymore!
+#	./test.sh $(ABI)
+
+install:
+	./install.sh
+
+test:
+	./test.sh
+
+amd64_emit_gas.o: amd64_emit_gas.c amd64_emit_gas.h
+	$(CC) $(CFLAGS) amd64_emit_gas.c -c
+	
+amd64_emit_yasm.o: amd64_emit_yasm.c amd64_emit_yasm.h
+	$(CC) $(CFLAGS) amd64_emit_yasm.c -c
+
+amd64_gen.o: amd64_gen.c amd64_gen.h
+	$(CC) $(CFLAGS) amd64_gen.c -c
+
+analyze.o: analyze.c analyze.h
+	$(CC) $(CFLAGS) analyze.c -c
+
+attribute.o: attribute.c attribute.h
+	$(CC) $(CFLAGS) attribute.c -c
+
+backend.o: backend.c backend.h
+	$(CC) $(CFLAGS) backend.c -c
+
+builtins.o: builtins.c builtins.h
+	$(CC) $(CFLAGS) builtins.c -c
+
+cc1_main.o: cc1_main.c
+	$(CC) $(CFLAGS) cc1_main.c -c
+
+cc_main.o: cc_main.c
+	$(CC) $(CFLAGS) cc_main.c -c
+
+cfgfile.o: cfgfile.c
+	$(CC) $(CFLAGS) cfgfile.c -c
+	
+control.o: control.c
+	$(CC) $(CFLAGS) control.c -c
+
+debug.o: debug.c debug.h
+	$(CC) $(CFLAGS) debug.c -c
+
+decl.o: decl.c decl.h
+	$(CC) $(CFLAGS) decl.c -c
+
+decl_adv.o: decl_adv.c decl_adv.h
+	$(CC) $(CFLAGS) decl_adv.c -c
+
+defs.o: defs.c defs.h
+	$(CC) $(CFLAGS) defs.c -c
+
+driver.o: driver.c driver.h
+	$(CC) $(CFLAGS) driver.c -c
+
+dwarf.o: dwarf.c dwarf.h
+	$(CC) $(CFLAGS) dwarf.c -c
+
+error.o: error.c error.h
+	$(CC) $(CFLAGS) error.c -c
+
+exectools.o: exectools.c exectools.h
+	$(CC) $(CFLAGS) exectools.c -c
+
+evalexpr.o: evalexpr.c evalexpr.h
+	$(CC) $(CFLAGS) evalexpr.c -c
+
+expr.o: expr.c expr.h
+	$(CC) $(CFLAGS) expr.c -c
+
+functions.o: functions.c functions.h
+	$(CC) $(CFLAGS) functions.c -c
+
+icode.o: icode.c icode.h
+	$(CC) $(CFLAGS) icode.c -c
+	
+icodeinstr.o: icodeinstr.c icode.h
+	$(CC) $(CFLAGS) icodeinstr.c -c
+
+inlineasm.o: inlineasm.c inlineasm.h
+	$(CC) $(CFLAGS) inlineasm.c -c
+
+lex.o: lex.c lex.h
+	$(CC) $(CFLAGS) lex.c -c
+
+libnwcc.o: libnwcc.c
+	$(CC) $(CFLAGS) libnwcc.c -c
+
+mips_gen.o: mips_gen.c mips_gen.h
+	$(CC) $(CFLAGS) mips_gen.c -c
+
+mips_emit_as.o: mips_emit_as.c mips_emit_as.h
+	$(CC) $(CFLAGS) mips_emit_as.c -c
+
+misc.o: misc.c misc.h
+	$(CC) $(CFLAGS) misc.c -c
+
+n_libc.o: n_libc.c n_libc.h
+	$(CC) $(CFLAGS) n_libc.c -c
+
+numlimits.o: numlimits.c numlimits.h
+	$(CC) $(CFLAGS) numlimits.c -c
+
+power_gen.o: power_gen.c power_gen.h
+	$(CC) $(CFLAGS) power_gen.c -c
+
+power_emit_as.o: power_emit_as.c power_emit_as.h
+	$(CC) $(CFLAGS) power_emit_as.c -c
+
+scope.o: scope.c scope.h
+	$(CC) $(CFLAGS) scope.c -c
+
+reg.o: reg.c reg.h
+	$(CC) $(CFLAGS) reg.c -c
+
+snake_driver.o: snake_driver.c snake_driver.h
+	$(CC) $(CFLAGS) snake_driver.c -c
+
+snake_main.o: snake_main.c
+	$(CC) $(CFLAGS) snake_main.c -c
+
+sparc_emit_as.o: sparc_emit_as.c sparc_emit_as.h
+	$(CC) $(CFLAGS) sparc_emit_as.c -c
+
+sparc_gen.o: sparc_gen.c sparc_gen.h
+	$(CC) $(CFLAGS) sparc_gen.c -c
+
+stack.o: stack.c stack.h
+	$(CC) $(CFLAGS) stack.c -c
+
+subexpr.o: subexpr.c subexpr.h
+	$(CC) $(CFLAGS) subexpr.c -c
+
+symlist.o: symlist.c symlist.h
+	$(CC) $(CFLAGS) symlist.c -c
+
+token.o: token.c token.h
+	$(CC) $(CFLAGS) token.c -c
+
+type.o: type.c type.h
+	$(CC) $(CFLAGS) type.c -c
+
+typemap.o: typemap.c typemap.h
+	$(CC) $(CFLAGS) typemap.c -c
+
+x86_gen.o: x86_gen.c x86_gen.h
+	$(CC) $(CFLAGS) x86_gen.c -c
+
+x87_nonsense.o: x87_nonsense.c x87_nonsense.h
+	$(CC) $(CFLAGS) x87_nonsense.c -c
+
+x86_emit_gas.o: x86_emit_gas.c x86_emit_gas.h
+	$(CC) $(CFLAGS) x86_emit_gas.c -c
+
+x86_emit_nasm.o: x86_emit_nasm.c x86_emit_nasm.h
+	$(CC) $(CFLAGS) x86_emit_nasm.c -c
+
+zalloc.o: zalloc.c zalloc.h
+	$(CC) $(CFLAGS) zalloc.c -c
+
+# x86_emit_gas.o: x86_emit_gas.c x86_emit_gas.h
+#	$(CC) $(CFLAGS) x86_emit_gas.c -c
+
+sweeper.o: sweeper.c
+	$(CC) $(CFLAGS) sweeper.c -c
+
+clean:
+	rm -rf dynextlibnwcc.o extlibnwcc.o $(CCOBJ) $(CC1OBJ) $(SNAKEOBJ) nwcc nwcc1 snake
+

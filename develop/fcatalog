@@ -1,0 +1,176 @@
+# Library function catalogue by nrw
+# initial version Apr 20 2006
+#
+# Integrated July 2009
+# XXX Extend for C99, UNIX95, UNIX98, (gasp) UNIX03
+
+c89 {
+	ctype.h {
+		int	isalnum(int);
+		int	isalpha(int);
+		int	iscntrl(int);
+		int	isdigit(int);
+		int	isgraph(int);
+		int	islower(int);
+		int	isprint(int);
+		int	ispunct(int);
+		int	isspace(int);
+		int	isupper(int);
+		int	isxdigit(int);
+		int	tolower(int);
+		int	toupper(int);
+	}
+
+	locale.h {
+		struct lconv	*localeconv(void);
+		char		*setlocale(int, const char *);
+	}
+
+	math.h {
+		double	exp(double);
+		double	log(double);
+		double	log10(double);
+		double	pow(double, double);
+		double	sqrt(double);
+		double	ceil(double);
+		double	floor(double);
+		double	fabs(double);
+		double	ldexp(double, int);
+		double	frexp(double, int *);
+		double	modf(double, double *);
+		double	fmod(double, double);
+		double	sin(double);
+		double	cos(double);
+		double	tan(double);
+		double	asin(double);
+		double	acos(double);
+		double	atan(double);
+		double	atan2(double, double);
+		double	sinh(double);
+		double	cosh(double);
+		double	tanh(double);
+	}
+
+# XXX How to handle jmp_buf?
+#	setjmp.h {
+#
+#		int	setjmp(jmp_buf);
+#		void	longjmp(jmp_buf, int);
+#	}
+
+	signal.h {
+		void	(*signal(int, void (*)(int)))(int);
+		int	raise(int);
+	}
+
+	stdio.h {
+		FILE	*fopen(const char *, const char *);
+		FILE	*freopen(const char *, const char *, FILE *);
+		int	fflush(FILE *);
+		int	fclose(FILE *);
+		int	remove(const char *);
+		int	rename(const char *, const char *);
+		FILE	*tmpfile();
+		char	*tmpname(char *);
+		int	setvbuf(FILE *, char *, int, size_t);
+		void	setbuf(FILE *, char *);
+		int	fprintf(FILE *, const char *, ...);
+		int	printf(const char *, ...);
+		int	sprintf(char *, const char *, ...);
+		int	vfprintf(FILE *, const char *, va_list);
+		int	vprintf(const char *, va_list);
+		int	vsprintf(char *, const char *, va_list);
+		int	fscanf(FILE *, const char *, ...);
+		int	scanf(const char *, ...);
+		int	sscanf(char *, const char *, ...);
+		int	fgetc(FILE *);
+		char	*fgets(char *, int, FILE *);
+		int	fputc(int, FILE *);
+		char	*fputs(const char *, FILE *);
+		int	getc(FILE *);
+		int	getchar();
+		char	*gets(char *);
+		int	putc(int, FILE *);
+		int	putchar(int);
+		int	puts(const char *);
+		int	ungetc(int, FILE *);
+		size_t	fread(void *, size_t, size_t, FILE *);
+		size_t	fwrite(const void *, size_t, size_t, FILE *);
+		int	fseek(FILE *, long, int);
+		long	ftell(FILE *);
+		void	rewind(FILE *);
+		int	fgetpos(FILE *, fpos_t *);
+		int	fsetpos(FILE *, const fpos_t *);
+		void	clearerr(FILE *);
+		int	feof(FILE *);
+		int	ferror(FILE *);
+		void	perror(const char *);
+	}
+
+	stdlib.h {
+		int	abs(int);
+		long	labs(long);
+		#div_t	div(int, int);
+		#ldiv_t	ldiv(long, long);
+		double	atof(const char *);
+		int	atoi(const char *);
+		long	atol(const char *);
+		double	strtod(const char *, char **);
+		long	strtol(const char *, char **, int);
+		unsigned long	strtoul(const char *, char **, int);
+		void	*calloc(size_t, size_t);
+		void	*malloc(size_t);
+		void	*realloc(void *, size_t);
+		void	free(void *);
+		void	abort(void);
+		void	exit(int);
+		int	atexit(void (*)(void));
+		int	system(const char *);
+		char	*getenv(const char *);
+		void	*bsearch(const void *, const void *, size_t,
+			size_t, int (*)(const void *, const void *));
+		void	qsort(void *, size_t, size_t, int (*)(
+			const void *));
+		int	rand(void);
+		void	srand(unsigned int);
+	}
+
+	string.h {
+		char	*strcpy(char *, const char *);
+		char	*strncpy(char *, const char *, size_t);
+		char	*strcat(char *, const char *);
+		char	*strncat(char *, const char *, size_t);
+		int	strcmp(const char *, const char *);
+		int	strncmp(const char *, const char *, size_t);
+		int	strcoll(const char *, const char *);
+		char	*strchr(const char *, int);
+		char	*strrchr(const char *, int);
+		size_t	strspn(const char *, const char *);
+		size_t	strcspn(const char *, const char *);
+		char	*strpbrk(const char *, const char *);
+		char	*strstr(const char *, const char *);
+		size_t	strlen(const char *);
+		char	*strerror(int);
+		char	*strtok(char *, const char *);
+		size_t	strxfrm(char *, const char *, size_t);
+		void	*memcpy(void *, const void *, size_t);
+		void	*memmove(void *, const void *, size_t);
+		int	memcmp(const void *, const void *, size_t);
+		void	*memchr(const void *, int, size_t);
+		void	*memset(void *, int, size_t);
+	}	
+
+	time.h {
+		clock_t	clock(void);
+		time_t	time(time_t *t);
+		double	difftime(time_t, time_t);
+		time_t	mktime(struct tm *);
+		char	*asctime(const struct tm *);
+		char	*ctime(const time_t *);
+		struct tm	*gmtime(const time_t *);
+		struct tm	*localtime(const time_t *);
+		size_t		strftime(char *, size_t, const char *,
+			const struct tm *);
+	}		
+}
+

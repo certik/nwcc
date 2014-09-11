@@ -1,0 +1,383 @@
+Mar 14
+======
+
+Fixed a lot of problems relating to ``long long''. There are still problems
+on FreeBSD, but most stuff works now. Whether or not __GNUC__ should be
+defined is a hard decision because defining it may cause unanticipated
+problems. So it is undefined by default, but can be enabled with a command
+line flag;
+
+stdnrw/nwcc_ng [2]> cat x.c
+#include <sys/types.h>
+
+int
+main(void) {
+        int64_t x;
+        printf("%d\n", (int)sizeof x);
+}
+stdnrw/nwcc_ng [0]> ./nwcc x.c
+x.c:5: Error: Parse error at `x'(#2)
+        int64_t x;
+                ^ here
+x.c:6: Error: Undeclared identifier `x'
+        printf("%d\n", (int)sizeof x);
+                                   ^ here
+/var/tmp/cpp90.cpp - 2 error(s), 0 warning(s)
+No valid files to link.
+stdnrw/nwcc_ng [1]> ./nwcc x.c -gnuheaders
+x.c:6: Warning: Call to `printf' without declaration (illegal in C99)
+        printf("%d\n", (int)sizeof x);
+        ^^^^^^ here
+/var/tmp/cpp90.cpp - 0 error(s), 1 warning(s)
+stdnrw/nwcc_ng [0]> ./a.out
+8
+
+
+Mar 13
+======
+
+Finally got nwcc to work on FreeBSD with __GNUC__ defined. Well, at least it
+can compile stuff, that is. But there's GNU stuff in the headers that's
+currently not dealt with properly by nwcc. For instance, the type __int64_t
+is typedef'ed as
+
+typedef int __attribute__((__mode__(__DI__))) __int64_t;
+
+... and nwcc just ignores that attribute. So the layout of structures
+containing any of those typedefs (e.g. ``struct stat'') will be messed up.
+The current status is that nwcc can now compile itself on FreeBSD if __GNUC__
+is defined, but the resulting nwcc driver binary always crashes and the
+nwcc1 compiler binary always exits with an error because ``struct stat''
+is messed up. So I'm still keeping __GNUC__ undefined for now.
+
+
+Mar 13
+======
+
+Added some hashing code for identifier lookup: Identifiers are hashed with
+their length as key and then a skip list (sorted by the first character) is
+used for further lookup. This is quite adhoc and the first idea I had, but
+it seems to work. This is currently only used for the global scope.
+
+But gcc (3.3) is STILL much faster! And guess what? That is because it uses
+the GNU assembler, which is specifically designed for use with gcc. For
+instance, if you use inline assembly with gcc, it will enclose your code
+between #APP and #NOAPP assembler directives. Those enable/disable features
+not used by the compiler to make assembling faster. It probably also uses
+pipes rather than files for IPC by default ...
+
+To be fair though, I could probably get some more speed out of NASM as well,
+e.g. by disabling the macro preprocessor (which I can't do at this point
+because it's required for structures.)
+
+Plain compilation with nwcc (-S flag) seems to be almost twice as fast as
+with gcc. But memory management is still terrible.
+
+
+Mar 13
+======
+
+I just noticed that some of the new stuff must've triggered a new problem;
+Registers associated with pointers were never recorded properly for the
+backend! It used to work but now it broke. I'm guessing free_preg() with
+the invalidate flag set may cause this problem. I've fixed this for loads
+and nwcc can compile itself again, but I still need to do it for stores.
+
+
+Mar 13
+======
+
+Implemented %h and %b, so the following works now:
+
+	short	shrt = 128;
+
+#define byte_swap_word(x) \
+	__extension__ ({ \
+		register short _x = x; \
+		__asm("xchgb %h0, %b0": "+q" (_x)); \
+		_x; \
+	})
+	printf("%d\n", byte_swap_word(shrt));
+
+So it looks like I may soon give the FreeBSD headers a try with __GNUC__
+defined (most of glibc already works that way, and it works without
+__GNUC__ too because unlike the BSD headers, it is designed to work with
+other compilers as well.)
+
+However, the register assignment code for those inline asm statements is
+a terrible battlefield, and I still suspect a lot of stuff is wrong.
+
+Moving to __GNUC__ also means a lot of work for stdarg builtin functions
+because those that exist are weak and some are missing.
+
+
+Mar 12
+======
+
+Implemented GNU's statement-as-expression feature. Hooray! This wasn't
+fun at all but now it finally seems to be working. E.g. the following
+program works (note that it even uses nested statement-as-expr!!!):
+
+#include <stdio.h>
+
+#define HM(arg) ({ \
+	int	x = arg; \
+	int	i; \
+	for (i = 0; i < x; ++i) { \
+		printf("%d\n", ({1; 2; puts("hello"); i; })); \
+	} \
+	i; \
+})	
+
+
+int
+main() {
+	int	x;
+
+	printf("%d\n", ({puts("lol");}));
+	if (HM(5) == 5) {
+		puts("good");
+	}	
+}
+
+
+
+Mar 12
+======
+
+Made some more inline asm progress. The following program works now:
+
+#include <stdio.h>
+
+/*
+ * Example taken from
+ * http://www.ibiblio.org/gferg/ldp/GCC-Inline-Assembly-HOWTO.html
+ */
+static inline char * asm_strcpy(char * dest,const char *src)
+{
+int d0, d1, d2;
+d0;
+__asm__ __volatile__(  "1:\tlodsb\n\t"
+                       "stosb\n\t"
+                       "testb %%al,%%al\n\t"
+                       "jne 1b"
+                     : "=&S" (d0), "=&D" (d1), "=&a" (d2)
+                     : "0" (src),"1" (dest)
+                     : "memory");
+return dest;
+}
+int main(void)
+{
+        int foo = 10, bar = 15;
+        char    msg[128];
+        __asm__ __volatile__("addl  %%ebx,%%eax"
+                             :"=a"(foo)
+                             :"a"(foo), "b"(bar)
+                             );
+        asm_strcpy(msg, "foo+bar=%d\n");
+        printf(msg, foo);
+        return 0;
+}
+
+
+This is quite exciting. But there's still a lot of stuff missing and nwcc
+currently just ignores unknown constraints and constraint modifiers, so some
+code may appear to work but really doesn't. Furthermore, I'm not sure I got
+all of the register allocation stuff right.
+
+(Giving names to static variables - ``int foo __asm__("hello");'' - works
+too now.)
+
+
+Mar 12
+======
+
+The stores redesign is done now; I'm guessing I saved 250 lines of code
+in the backend. I also fixed some long long register allocation problems;
+long long should be a lot more stable now.
+
+
+Mar 12
+======
+
+I was in the middle of the stores redesign and so I copied the new code
+to the nwcc self-compilation test directory to see whether the new stuff
+works. I got a lot of errors ... But then I tried the old version and it
+still didn't work. So it looks like the load code broke a lot of stuff
+and I didn't notice it, which is strange because I used it to recompile
+nwcc twenty or so times during debugging. I cannot imagine how I overlooked
+the problems, or what I changed later on.
+
+Anyway, I hope it works now.
+
+
+Mar 11
+======
+
+Phew, got the load redesign done. The savings are ~150 lines of code,
+perhaps a bit less than expected. Of course this was quite hard to get
+right and I still need to do stores, which may save me another 200 or so
+lines. There are around 300 lines that I'd currently consider reusable
+for other architectures as well. And a considerable amount of code is
+dedicated to x86 sillinesses that I'll probably never encounter on other
+architectures ...
+
+While I was at it, I also fixed a few register allocation problems. It's
+amazing how many terrible design flaws hide in the x86 architecture.
+Since the register allocator uses esi and edi, I now have this neat
+function of the neat name alloc_16_or_32bit_noesiedi(). It's needed
+because esi/edi cannot be addressed as 8bit registers. Thank you very
+much Intel Corporation for stealing so many hours of my time!
+
+
+Mar 11
+======
+
+Added support for inline asm immediate and memory operands. The latter
+seem to be working with automatic, static and indirect access (but struct
+members aren't done yet.) The code I had to write for accessing those
+memory operands reminded me of how much duplicated logic there is in
+those load/store emitter functions. I'll probably make it such that there
+is only one load and one store emitter function left. Other backend
+simplifications and garbage removals are high on the wishlist as well
+because I'll soon do a MIPS/IRIX backend; Clearly some interface cleanup
+will be required to complete that task successfully.
+
+
+Mar 10
+======
+
+Fixed various bugs reported by Graue [www.oceanbase.org] and implemented
+left and right shifting for ``long long''. Particularly the latter was
+quite time consuming, as there were a lot of type conversion and GPR
+saving problems. And there are still many left, e.g. two individual
+shift expressions work well in isolation, but if you have two in a row, 
+the second one breaks. I do not know why.
+
+long long code + nwcc = russian roulette
+
+
+Mar 9
+=====
+
+Added inline asm output operand support. Now the following statement
+works:
+
+	int	x = 1234;
+	int	y;
+
+	__asm__("movl %1, %%eax;"
+		"movl %%eax, %0;"
+		: "=r" (y)
+		: "r" (x)
+		: "eax");
+
+As with input, currently only register operands are supported. I may
+do memory operands later today, but I need to play a round of Dethkarz
+now.
+
+By the way, it was genuinely amusing to write the first test program
+for the new code and find that, while gcc correctly returned 1234, nwcc
+returned -1073745128 :). Sometimes one just cannot watch these ``minor''
+disparities between what is and what should be with a straight face ...
+
+Perhaps the most annoying thing in programming is when you're trying to
+fix a bug and your initial problem diagnosis turns out to be wrong. You
+carefully reread every function involved, and in doing so you spot a
+problem and fix it. ``Obviously,'' you say to yourself, ``that was it!''
+So you recompile the program and rerun it -- ... and you're observing
+the EXACT same problem! In some cases this happens more than once - No
+matter what you change, the same wrong behavior remains. This is very
+annoying because it is difficult to accept that you cannot trust your
+own senses while debugging because they are fooled so often.
+
+
+Mar 8
+=====
+
+Made some more significant inline assembly progress. In particular,
+input operands are already working (though output isn't implemented
+yet.) The statement in the following program already works as
+expected:
+
+int
+foo(void) {
+	int	x = 1234;
+	
+	__asm__("movl %0, %%eax"
+		:
+		: "r" (x));
+}
+
+int
+main(void) {
+	printf("%d\n", foo());
+}
+
+Besides "r", the x86-specific a/b/c/d/S/D constraints are already
+supported for input as well.
+
+But what I have is NOTHING in comparison to what I need for making
+the FreeBSD headers work with nwcc. Example from machine/endian.h:
+
+return (__extension__({ register __uint32_t __X = (_x_; __asm(
+"xchgb %h0, %b0\n\trorl $16, %0\n\txchgb %h0, %b0" : "+q" (__X));
+__X; }));
+
+... I don't even know what %h0, %b0 and +q mean yet! And that
+statement-as-expression GNU C feature will not be easy to implement
+either ...
+
+
+Mar 7
+=====
+
+Did some more gcc-style inline assembly work. Most parsing seems to be
+working, now I need to do icode generation for those operand expressions
+and integrate them into the NASM output.
+
+Furthermore, I did some nwcc profiling (must've been the first time in
+two years!) and found that with big input files, usually between 20% and
+35% of the time is spent in lookup_symbol(), lookup_typedef() and
+do_store_decl()! That code is from 2003 and I didn't care about speed at
+that early stage of development at all ... I'll probably try to improve
+the situation by hashing all of those identifiers as soon as the inline
+asm stuff is working.
+
+(Note that I NEVER paid any attention to optimization in the past two
+years, so it shouldn't be too difficult to beat gcc speedwise when I
+try.)
+
+
+Mar 6
+=====
+
+A new release - nwcc 0.4! The most important additions this time are:
+
+   - long long support
+   - simple stack protection
+   - register allocator improvements (uses esi, edi now)
+   - better BSD command line argument handling
+   - an installation procedure (finally!)   
+   - inline assembly language support
+
+long long and inline assembly are required for Linux/BSD library
+compatibility. nwcc currently processes the headers as non-GNU code,
+but that restricts a lot of features, so I have decided that
+sufficient GNU C compatibility is the way to go. long long isn't quite
+done yet, but it's getting there. Inline assembly language in AT&T
+syntax is handled by converting it to NASM code internally. The current
+implementation of that conversion code was written on one day and is
+*very* incomplete and unproven - though significant improvements are to
+be expected.
+
+The optional stack protection feature will cause nwcc to generate code
+that saves the functions return address somewhere safe (more or less)
+and checks for corruption upon executing a ``ret'' instruction (if the
+current and saved return addresses differ, the program is aborted.)
+
+(nwcc's source code line count is around 26.000 now - check NEWS-0.3
+for a more detailed history of what was done since Feb 13.)
+
+
+

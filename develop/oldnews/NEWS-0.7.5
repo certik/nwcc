@@ -1,0 +1,676 @@
+August 15 2008
+==============
+
+I found a devastating showstopper on Solaris/SPARC: It
+uses bitfields for stdio's FILE, so I need to implement
+compatible bitfield storage layout before I can proceed
+meaningfully.
+
+Since this work wasn't intended to go into the next
+release, I'm stopping all development and preparing the
+next release.
+
+
+August 13 2008
+==============
+
+I've started looking into SPARC again. First thing I did
+was computed goto support, which appears to work.
+
+When trying the nwcc test suite, there are about 10 or
+so cases which seem to indicate unpleasant bugs.
+
+When trying the adapted gcc test suite, I get:
+
+	1277 passed
+	100 failed at compile time
+	383 failed at runtime
+
+... which, if contrasted with the latest AMD64 numbers -
+
+	1566 passed
+	57 failed at compile time
+	10 failed at runtime
+
+... looks quite pitiful at best, and hopelessly busted
+at worst.
+
+But BEWARE!!! I am forced to run the test suite with a
+broken gcc toolchain on my test system! In particular,
+it (perhaps binutils) seems completely unable to handle
+static common variables properly, which is why I can't
+even use it to build nwcc.
+
+Now trying to use Sun's CC to get meaningful test suite
+results is also hopeless because that one will complain
+about all of the unprotected GNU C features (some test
+cases do check for __GNUC__, but not all of them)
+
+I'll just continue testing with gcc, review the failed
+cases one by one, and fix those that are genuinely
+broken with nwcc.
+
+
+
+August 12 2008
+==============
+
+Well, I couldn't resist and started doing bitfield stuff.
+That means masking and promoting them as needed. However,
+I've still kept the unexpected storage layout, such that
+if you have
+
+	struct foo {
+		unsigned	x:4;
+		unsigned	y:4;
+	};
+
+... then both x and y become an entire ``int'' EACH, but
+operations on them try to keep up the impression that we
+are really dealing with a 4-bit-sized integer.
+
+I think as far as standard C bitfields are concerned,
+it's looking OK now, but there are still issues with GNU
+C. In particular, types above unsigned int are STICKY, so
+
+	unsigned long long	x:33;
+
+... causes even temporary result values - such as x +
+123 - to remain within the specified range! In other
+words, the value is not ``promoted'' to unsigned long
+long when it is used.
+
+nwcc doesn't do this.
+
+Need to do more testing and possibly some SPARC
+debugging before the release.
+
+
+August 09 2008
+==============
+
+More AMD64 debugging. I'm considering stopping now, since
+the results seem good enough (though there are still some 
+bugs - but I can't fix them all now).
+
+With my adapted gcc test suite, I'm getting the following
+results:
+
+	AMD64:
+	1563 passed
+	59 failed at compile time
+	18 failed at runtime
+
+	x86:
+	1562 passed
+	59 failed at compile time
+	23 failed at runtime
+
+(The numbers differ slightly because my script does not
+account for gcc errors for a particular test case.)
+
+I think I should try this on SPARC now, fix whatever I
+can fix easily, and then put the 0.7.6 label on it.
+
+
+July 29 2008
+============
+
+AMD64 debugging!
+
+
+July 20 2008
+============
+
+Finally implemented computed gotos! They work on x86
+now, and possibly AMD64, but the backend-specific bits
+are left unimplemented for the other platforms. That's
+at most 10 lines of code to cover all of those though.
+
+Fixed some more bitfield and long long bugs, and
+static initializer problems, and maybe other things
+that I don't remember.
+
+
+July 18 2008
+============
+
+I've been trying to get nwcc to compile the testpack
+(consisting of various small open-source apps like
+xterm, gzip, lsof, gtar, gmake, vim, coreutils) on
+this new Linux system again.
+
+Here are some mostly disappointing results:
+
+
+	- Many of the programs, which are just a
+year or two old, don't compile anymore even with
+gcc. Mostly because of library function name
+clashes. E.g. in tar, bash, coreutils
+
+	- Defining __GNUC__ - which is considered
+harmful by many - is still the best way to make the
+average app work. For example, GNU make and lynx
+depend on being able to compare two dev_t variables
+using the equality operator; This fails in non-
+__GNUC__ mode because it will define dev_t to be a
+struct type
+
+	- There are various other absurd problems
+which prevent a few apps from working, e.g. the vim
+autotools has some CC/CFLAGs/... caching problems
+which prevent it from working at all
+
+
+I fixed a few other problems that came up. For
+example, GNU awk wants to use designated array
+initializer ranges;
+
+	[0 ... 5] = 123
+
+... so I implemented this.
+
+
+
+July 17 2008
+============
+
+I fixed __builtin_offsetof(), which is now used by
+glibc on this new Linux system I'm using. GNU tar,
+xterm, lynx, less and wget are compilable on it
+again. I had to get a newer tar version than 1.17
+though, because that one doesn't even work with gcc
+anymore. Also, coreutils 6.9 is giving me errors
+with both gcc and nwcc, and I have some hopes that
+a newer version would also work.
+
+I'll have to try with more up-to-date versions, and
+perhaps throw some other programs at it as well.
+
+Another thing which I think is due now is bit
+fields. Currently nwcc turns every bit field member
+into a whole "int"; I'll have to use the requested
+bit count, organize it properly, implement the
+masking, shifting and promotion operations, and
+debug and test all of that for all platforms.
+
+
+
+July 14 2008
+============
+
+The constant expression changes have been haunting
+me for two weeks now, it still doesn't work OK.
+It's nowhere near as usable as it was before I set
+out to support the appalling braindead glibc kludge
+for linker error diagnostics.
+
+Constant expression is now more "aggressive" (it
+actually just does what it's supposed to do), but
+still there are a few things which are not done
+yet, e.g. usual arithmetic conversions and
+promotions are not quite correct. E.g. in
+
+	unsigned int	val;
+
+	val / 4;
+
+... nwcc will convert 4 to "unsigned int", which
+will create an anonymous item with an unknown
+value, which will cause the division to be carried
+out using a div instruction. If we were to write
+4u, the conversion would not take place, and the
+operation would be perfomed using a cheaper shift
+instruction.
+
+
+
+July 02 2008
+============
+
+I tried some bigger test programs, and it turns
+out that glibc had an amazingly disgusting new
+idea; Break incorrect code at link time, not
+compile time!
+
+In a nutshell, what they do is this:
+
+	extern int __nonsense_stuff;
+	constexpr? constvalue: __nonsense_stuff;
+
+... here constexpr and constvalue are constant
+expressions, and __nonsense_stuff is a variable
+which is NEVER defined!
+
+Now the idea is that, if the conditional
+expression is evaluated wrongly, then it yields
+a value of 0, and the __nonsense_stuff operand
+of the conditional operator is used as result of
+the expression. Thus we get a linker error 
+because the variable is not defined.
+
+If, however, the expression is correctly
+evaluated, then it uses the "constvalue" operand
+of the conditional operator, and ________GLIBC
+DEPENDS ON GCC OPTIMIZING THE ACCESS TO
+__nonsense_stuff AWAY SO AS NOT TO YIELD A
+LINKER ERROR!!!!!!!!!!!!
+
+So I spent two evenings making this bogus stuff
+work with nwcc. It is used in asm-generic/ioctl.h
+at least, and I can't even see it being GNUC-
+specific, though I didn't really check.
+
+Another missing thing is that it doesn't check
+types 100% correctly. Usual arithmetic conversion
+does work, so if you have
+
+	1? 123: (long long)__nonsense
+
+... then the result type is "long long" too, but
+other things like struct types in && and || are
+not handled. E.g. it accepts
+
+	struct foo	bar;
+	0 && bar;
+
+
+
+June 29 2008
+============
+
+Some more long long debugging, especially in
+comparison and modulo, but some software
+arithmetic things for multiplication and
+division was also broken.
+
+DANGER DANGER DANGER I've moved to another PC
+and haven't taken the bigger test suite with
+me yet, so I hope these things didn't break
+anything. I only tried the nwcc test suite and
+self-compilation.
+
+I think next I may attempt to fix bitfields,
+finally!
+
+
+June 23 2008
+============
+
+More debugging.
+
+
+June 19 2008
+============
+
+Some more long long debugging. It's coming along
+slowly.
+
+
+June 01 2008
+============
+
+I took a couple of weeks off from nwcc to work on
+an exciting new project. A month later, though, I
+noticed that it's taking too long and I need a
+break from that again, so I'm back to nwcc.
+
+Finally I've thrown the gcc test suite at nwcc,
+and already fixed a few bugs that came up. I
+should probably make a list of GNU (and C99)
+features that may never be supported. Some that
+came up:
+
+	- Nested functions. I find this feature
+really pointless, and it would probably be hard
+to implement
+
+	- Complex and imaginary numbers
+
+	- Empty structs, empty array and struct
+initializers (char buf[] = {}). Some of this may
+be worth supporting, not sure about that yet
+
+	- LOTS of pointless builtins and
+attributes
+
+	- __label__
+
+On the other hand, there are some things which
+are desirable:
+
+	- Computed gotos
+	
+	- Better VLA support
+
+After having deleted many test cases which use
+GNU C features that won't be supported in nwcc,
+I get the following numbers:
+
+	1526 tests passed
+	192 tests failed at compile time
+	5 tests failed at runtime
+
+(The number of tests failed at runtime is probably
+off by at least an order of magnitude, I think my
+test script does not always handle them correctly.)
+
+
+April 13 2008
+=============
+
+I've started writing some ``optimization'' stuff.
+For now that's just transforming multiplication
+and division by powers of two to bit shifts, and
+other things like that. Also, use of a post-
+increment/decrement operator:
+
+	i--;
+
+... is now finally compiled like
+
+	--i;
+
+You will laugh because these things are so
+essential that everybody takes them for granted
+in a compiler, but even this doesn't come for free
+in terms of development time.
+
+Sadly the transformation broke something somewhere
+in long long shifting, so the gmake_junk.c testcase
+doesn't pass cleanly, so I've disabled it all for
+now.
+
+Thus, because even very simple take-for-granted
+optimiztions can break things, I've introduced an
+-O-1 (``minus one'') flag which uses the old most
+stupid nwcc behavior. Due to the bugs, this is the
+default for a few days, and cannot be turned off.
+
+
+April 11 2008
+=============
+
+Even more bugs fixed! As far as accepting and
+translating code goes, it seems to be looking
+rather good at least on x86. However, there are
+presumably still lots of code generation bugs.
+
+I'm considering writing an ABI test program
+generator to generate many different function
+call combinations.
+
+
+April 09 2008
+=============
+
+Fixed some bugs. Looking better now.
+
+Maybe I should dedicate a few days solely to
+writing a huge number of test cases, and an ABI
+test program generator.
+
+
+April 08 2008
+=============
+
+Apparently I didn't really try the latest extern
+declaration changes with nasm, so of course they
+didn't work. Thus I spent most of the evening
+fixing these things. I have SOME confidence in
+nwcc's static declaration handling now.
+
+There were also some bugs in the float buffer
+changes for nasm, but it should be fine now.
+Still needs testing on AMD64.
+
+
+April 07 2008
+=============
+
+OK, I've managed to remove the float conversion
+buffer from x86 and AMD64, and replaced it with
+temporary stack storage and two new x86-specific
+icode instructions.
+
+The main problem was that too many things in the
+buffer handling were implicit. In general, the
+asm code emitters did checks like
+
+	if (srcreg->type == REG_FPR
+		&& !IS_FLOATING(buffer->type)) {
+
+... to determine whether a load or a store
+involved a conversion, i.e. they looked at data
+types - and sizes! - associated with source and
+target buffers to do this.
+
+The new approach generates explicit intermediate
+conversion instructions, so there are less ways
+for things to go wrong. Also, the conversion
+buffers are now created exactly for a given
+type, so there are less opportunities for the
+typing to get mixed up when multiple conversions
+take place.
+
+I haven't tried the new code on AMD64 yet, but
+my hope is that it solves all of the floating
+point type conflicts which prompted this work.
+If it doesn't, it will hopefully at least be
+easier to debug.
+
+
+April 06 2008
+=============
+
+I have to say the way nwcc handles conversions
+between floating point and integer values on x86 and
+AMD64 is an absolutely colossal disaster.
+
+It is ridiculous, disgusting, wrong.
+
+I'm sick of it.
+
+It's time to trash all of that floatbuf bullshit and
+write unambiguous x86-specific icode instructions.
+
+
+April 04 2007
+=============
+
+I've been debugging various long-standing bugs. Also,
+I have FINALLY changed the expression parser to
+evaluate constant sub-expressions as soon as possible.
+That isn't just an obvious Quality of Implementation
+issue (which I have neglected for too long), but it's
+even required to make null pointer constants work;
+
+	int	*p = 123 - 123;
+
+... used to break because the obvious evaluation
+wasn't performed at compile time, so the expression
+was not accepted as a null pointer constant.
+
+nwcc's constant expression evaluation has always been
+fairly weak. It became a bit better with the rewrite
+for cross-compilation, but there are still many bugs.
+Because it now attempts to evaluate all constant
+sub-expressions as well, there is much more stress
+testing, and consequently various bugs have already
+been exposed and fixed.
+
+On the whole it's looking good even after all of these
+fundamental changes that I've been doing on the past
+few weeks.
+
+I will fix some more known bugs. Then I'll try the
+changes on all other supported platforms, and after
+debugging those too, I can begin dealing with register
+leaks (by which I mean that registers are not marked
+as unused when we're done with them, so they're saved
+to the stack unnecessarily when a function call or
+other branch occurs).
+
+
+Mar 30 2008
+===========
+
+The memory savings did not bring performance with them.
+The next thing I'll do is saving unnecessary save
+instructions by removing register leaks.
+
+
+Mar 27 2008
+===========
+
+<Frustration about tentative C declarations>
+
+Profanity deleted. Oops, nothing left.
+
+
+Mar 25 2008
+===========
+
+OK, it looks like the x86 stuff at least works like
+before with the new layout. Interestingly I found that
+nasm didn't like:
+
+	foo:
+	....
+	global foo
+
+... it accepts this but does not create foo as a global
+symbol. It only does that if you move the global
+declaration before the symbol definition. yasm does the
+right thing. Maybe (probably) newer nasm versions get
+it right, this may be worth checking.
+
+The next task will be importing the nwasm zone
+allocator and adapting it to nwcc. This will be
+interesting and possibly challengig in a few ways
+(pinning down exactly which data structures must be
+kept around for longer).
+
+
+Mar 24 2008
+===========
+
+Some more refactoring work. Apparently the reorganization
+has uncovered some previously undetected bugs related to
+mapping registers to data items. But those seem mostly
+minor.
+
+The select.c testcase still isn't working even in gas
+mode because of some inline asm code generation/emission
+problems (physical registers are not being saved
+correctly). Once that's done I can try the nasm stuff as
+well, and if it works, try self-compilation and the other
+programs I've been testing with.
+
+Afterwards I'll still have to make the emitter parts of
+the AMD64, MIPS, PPC and SPARC backends use the new
+vreg/preg mapping interfaces as well, and test them using
+cross-compilation at least. Then I can proceed to either
+running the testsuite on those systems as well (there
+will be SOME problems due to the reorganization) or just
+start writing the zone allocator on x86 (and protect it
+with another feature selection macro).
+
+
+Mar 23 2008
+===========
+
+I was mostly spending my time on nwbintools for the past
+couple of weeks (and slacking off). However, I just
+returned to nwcc, and have for three days been
+refactoring it.
+
+What I'm doing is trying to fix some of the memory usage
+and performance problems.
+
+The thing is that nwcc's operation is waaaaaaaay too
+sequential; First it reads all of the tokens, then it
+parses them into all declarations and function bodies,
+then it translates all of that into intermediate code,
+then it emits assembly code.
+
+This means that a huge number of data structures must
+be kept around until the very end of nwcc's processing,
+thus requiring ridiculous amounts of memory for large
+source files. This yields many expensive allocations
+and increases paging activity and cache thrashing.
+
+Therefore, I'm now working on translating function
+bodies immediately after they have been read. That way
+I can throw all associated data structures away before
+reading the next function. This will allow me to use an
+efficient zone allocator for all of those data
+structures in order to reuse the buffers.
+
+As a result, nwcc's memory usage during parsing and code
+generation and emission will not mainly be bound by the
+size of the input file, but merely by the size of its
+largest function.
+
+(Global and file scope declarations are a little more
+difficult and must be kept around until the very end.
+Also, tokens still aren't read in place - that will be
+another rather more difficult exercise).
+
+I cannot make any reasonable prediction as to how much
+memory will be saved and how much performance will be
+gained. Those values will also highly depend on the
+size of the input. But I'll be testing with some nwcc
+files such as icode.c (4000 lines of code), and for
+that one I'm going to guess up some numbers: 10-20%
+more performance and 90% less memory usage. 
+
+
+
+Mar 06 2008
+===========
+
+Replaced fopen()/getc() with mmap() in the pre-
+processor. This saved about 25% processing time,
+but the whole thing is still dog slow and buggy.
+
+
+Feb 18 2008
+===========
+
+I am happy to make the first release of nwcc in 2008,
+verson 0.7.5! This version is another small (but not
+tiny) incremental improvement, which fixes many bugs
+and adds a few new features too.
+
+Many thanks to Pongthep Kulkrisada, who found and
+reported many serious bugs by doing very focused and
+persistent testing!
+
+Apart from platform-independent bugs, this release
+primarily focuses on SPARC support. It fixs lots of
+bugs in SPARC floating point support, ABI
+compatibility, and other things. Thanks again to
+Andre van Ruth of the Software Libre Foundation
+[http://www.gnulinux.nl] for making this possible by
+providing me with perfect SPARC access!
+
+Another new thing in this release is initial support
+for TLS (thread-local storage) and PIC (position-
+independent code) on x86, AMD64 and SPARC. These are
+likely to be full of bugs, so please report any that
+you may run into. In particular, the TLS/PIC stuff
+does NOT work with nasm because nasm doesn't really
+support them. yasm support may also be buggy because
+TLS support was only recently added (upon my request-
+thanks to Peter Johnson for doing this!) Another
+known problem is that TLS and PIC can't be used
+together yet.
+
+Since there were so many SPARC bugs to deal with (and
+there are still some), I haven't gotten around to
+fixing PowerPC and MIPS support as well. Consequently
+those platforms have not even really been tested with
+this release. They will receive their fair share of
+attention in the subsequent couple of nwcc versions. 
+

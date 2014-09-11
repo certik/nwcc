@@ -1,0 +1,24 @@
+August 04 2011
+==============
+
+Time to release nwcc 0.8.2!
+
+This is a minor update containing various important, mostly AMD64-specific
+bugfixes, as well as initial multi-dimensional VLA support.
+
+nwcc now by default does not pretend to be gcc on Linux systems anymore.
+It used to do this in order to work around various longstanding C library
+header bugs, which no longer seem to be present. GNU mode remains the
+default on OSX and BSD. Regardless of the default choice, you can always
+ask nwcc to define __GNUC__ by passing it the "-gnu" command line option,
+and not to define it by passing "-notgnu". This can also be selected as
+a default choice during compilation by using "./configure --gnu" (or
+--notgnu), and it can also be put in the configuration file.
+
+(nwcc work had been suspended for over a year because I was working on
+other hobby projects in what little spare time I had. Lately I was also
+working on a bitfield support rewrite to make it work properly on big
+endian targets, but this task is so frustrating and time-consuming that
+I'm making a release without those changes in order to get the important
+bugfixes out.)
+

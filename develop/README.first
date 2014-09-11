@@ -1,0 +1,213 @@
+
+The nwcc C compiler (http://nwcc.sourceforge.net)
+  ... version 0.8.3
+  ... (c) Nils Weller 2003 - 2014
+=================================
+
+
+1. Introduction
+2. Building nwcc & supported platforms
+3. Usage
+4. The future of nwcc
+5. Feedback, bug reports & contact
+
+  __________________
+,/                   \,
+| 1. Introduction     |
+`\___________________/'
+
+nwcc is a small C compiler for Unix systems that I wrote in my freetime,
+for fun and to prove to myself that I could. I started the project in
+August 2003, but because I had a job and a life and a few other hobby
+code projects, it took me until autumn 2005 to make it work with various
+constructs of the C language.
+
+So what new things does nwcc bring to the table? Most importantly, new code:
+I wrote everything from scratch - including the lexer, parser and backend.
+The code is written in C, is currently around 60.000 lines in size, and
+I'm releasing it under the BSD license.
+
+This release is not necessarily useful for software development, but at
+least nwcc is strong enough to compile itself (the result of which can
+compile nwcc as well) and should thus be capable of dealing with at least
+some medium sized programs. There are still some things missing/broken,
+but things are improving almost every day (I upload my changes to SF
+whenever I add/fix something of interest.)
+
+Feature-wise, there is little interesting to be had in nwcc yet:
+
+       - Support for various C language features is incomplete or broken;
+Most notably support for constant expressions, bitfields and a few other 
+things. There's a more detailed list on the website:
+	http://nwcc.sf.net/bugs.html
+
+       - There are no features a power developer used to established
+mainstream compilers would consider interesting, yet (apart from, maybe,
+cross-compilation.) Sorry. There is little beyond plain dumb compilation.
+Especially support for debugging and profiling are still missing
+
+       - There is absolutely no optimization, meaning the generated code
+is very slow compared to the output of established compilers. I will work
+on this soon, but you should understand that my primary concerns right now
+are code correctness and portability rather than speed (it's hard enough to
+make slow code work!)
+
+It takes a lot of work to get even a subset of the C language to compile,
+so the fact that something is missing or done wrong in nwcc does not mean
+that I don't care about that particular area of the C language or compiler
+design; It only means that I haven't gotten around to doing it right, or
+indeed at all, yet.
+
+  ________________________________________
+,/                                        \,
+| 2. Building nwcc & supported platforms   |
+`\________________________________________/'
+
+nwcc currently supports Linux/Mac OS X/*BSD/Solaris on 80x86, Linux/Mac OS
+X/FreeBSD/OpenBSD on AMD64, AIX/Linux on PowerPC, IRIX on MIPS (64bit-only),
+and Solaris/Linux on SPARC (64bit-only.)
+
+Just type ``./configure'' and ``make'' to build the compiler, then ``make
+install'' to install it to /usr/local/nwcc. To install nwcc to a different
+directory, use
+
+	./configure --installprefix=/path/to/dir
+
+Other configurable options:
+
+	--color		Make nwcc display colored warnings/errors. This
+			can also be enabled with the "-color" command
+			line option instead (which can also be put into
+			the configuration file)
+	--gnu		Make nwcc pretend to be gcc to applications (by
+			defining __GNUC__). The default is not to do
+			this. The -gnu command line option can be used
+			as well
+	--notgnu	Opposite of --gnu. The -notgnu command line
+			option can be used as well
+
+If you are building nwcc on a 64bit AIX system, note that you have a choice
+between 32bit and 64bit. If you just type ``make'', you'll get a 32bit
+compiler; for 64bit, type ``make ABI=-maix64'' (unfortunately the test
+script invoked by the Makefile reports more errors than there really are...
+use ``./test.sh -maix64'' to get the real status on PPC64.)
+
+(Note that 32bit and 64bit binaries can both generate 32bit and 64bit code;
+You just have to use the -abi=aix32 and -abi=aix64 command line options.)
+
+To build an N64 nwcc on IRIX, type ``make ABI=-mabi=64''.
+
+(Note that N32 and N64 binaries can both generate N32 and N64 code;
+You just have to use the -abi=n32 and -abi=n64 command line options.)
+
+To build an AMD64 nwcc on Mac OS X, type ``make ABI=-m64''.
+
+(On OSX, nwcc can always generate x86 or AMD64 code using the ``-arch=x86''
+and ``-arch=amd64'' command line options.)
+
+gcc and GNU cpp are currently needed for compiling and using nwcc. Please
+refer to the USAGE file for instructions on using nwcc without installing
+it.
+
+nwcc is capable of cross-compilation - Please refer to the CROSSCOMP file
+for more information on this feature.
+
+I have been developing nwcc on SuSE Linux 8.2, FreeBSD 5.4, OpenBSD 3.7,
+AIX 5.3, IRIX 6.5.25 and Solaris 10.
+
+The test programs in the tests sub directory all work on the x86 and AMD64
+systems. Some that relate to floating point, variadic functions and inline
+assembly fail on MIPS, PowerPC and SPARC.
+
+---
+
+  ___________________
+,/                   \,
+| 3. Usage            |
+`\___________________/'
+
+Please read the USAGE file.
+
+  ___________________
+,/                   \,
+| 4. Future of nwcc   |
+`\___________________/'
+
+Obviously, this is only the beginning, and I intend to do much more
+with nwcc in the near future.
+
+I need to improve:
+
+      - Code correctness. Invariably, there are many bugs I haven't
+found yet, and that people who try out this early version will run
+into, or that I will run into myself while using nwcc myself 
+
+I need to add:
+
+      - All missing C language features
+
+      - All sorts of optimizations. Instruction scheduling, dataflow
+analysis, exploitation of cache characteristics, compiler-intrinsic 
+functions and even simple micro optimizations (such as using bitwise
+instructions instead of more expensive arithmetic instructions where
+possible) still need to be done
+
+      - Backends for all common desktop and server architectures in use,
+and perhaps a few embedded ones too. ARM, PA-RISC and Alpha are high on
+my wishlist right now
+
+      - Support for various debugging and compatibility features, such
+as guarded variables (variables that may only be accessed from certain
+functions), emulation of misaligned memory access on architectures that
+yield bus errors for that, zeroing out stack space before first use,
+placing ``const'' variables into read-only memory, and so on
+
+      - Support for one or more debuggers and profilers. This may involve
+writing my own debugger and profiler because this is a fun project and it may
+be easier to start from scratch than to understand a huge program like say
+gdb in-depth enough to generate compatible output, after all
+
+      - Support for creating position-independent code for shared libraries
+
+  _______________________________
+,/                               \,
+| 5. Feedback/Bug reports/Contact |
+`\_______________________________/'
+
+I am open to all sorts of feedback and would love to hear from you. I
+would particularly appreciate bug reports, code criticism and future
+suggestions, though I'd also be happy to answer questions and give
+support. I also enjoy discussing Unix systems programming and computer
+architecture in general.
+
+You can mail me at
+
+    nweller<at>tzi<dot>de
+
+In particular, I would be highly appreciative of bug reports. The test.sh
+script is expected to pass fully on most Linux/glibc systems from between
+2003 and 2007. If any tests fail on your Linux or BSD system, please mail
+me the output of
+
+./test.sh --verbose
+
+(this will also give you many warnings, but those are good and intended.)
+
+If you've found any bugs while experimenting with nwcc, please try to
+create a minimal C program that reproduces the problem and mail it to me,
+along with a description of the problem.
+
+It's no secret that any program containing more than a few thousand lines
+of code is unlikely to work with nwcc, so I'm not interested in ALL
+uncompilable code, but mostly in code that yields a compiler crash or a
+cryptic error messages that indicates a genuine bug (as opposed to just
+an unimplemented feature.) Of course, I also want to hear about valid
+C code that is rejected as being invalid by nwcc. Note that nwcc only
+implements a subset of GNU C, so some error messages may be correct from
+a standard ISO C perspective and indicate some nonportability in the
+input. Also see the section ``Using nwcc in a GNU world'' in the USAGE
+file.
+
+
+  -- Nils R. Weller, Bremen (Germany), August 04 2011 
+

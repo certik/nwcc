@@ -1,0 +1,266 @@
+Jan 6 2007
+==========
+
+I can compile nwcc with itself on SPARC now, but
+there are still three files for which buggy code is
+generated: evalexpr.c, typemap.c and sparc_gen.c.
+
+I've fixed tons of bugs today, but the remaining
+ones that prevent full self-compilation seem so hard
+to find that I probably won't be able to make a
+release tomorrow.
+
+On a side note, I've also changed the build scripts
+to compile nwcc as 64bit application because it
+seems there are still a few cross-compilation bugs
+bugs which I'm too unmotivated to hunt down and fix
+now (though perhaps the problems lie elsewhere.)
+
+
+Jan 5 2007
+==========
+
+I haven't been very productive in 2007 yet, but
+yesterday I finally got back to coding. In particular
+I wrote a SPARC floating point register allocator
+yesterday, and implemented lots of floating point
+operations today.
+
+The test suite almost completely passes now, and I
+can already compile the vast majority of nwcc files
+with itself on SPARC. A Sunday release would be a
+cool way to end my vacation ...
+
+
+Dec 30 2006
+===========
+
+Today I was less productive than yesterday, and only
+worked for 3 or so hours on nwcc. However, the stuff I
+did was effective nevertheless; 74 tests pass now.
+
+Variadic functions and stack arguments should now be
+mostly correct. I'm also using the caller register
+save area now. There are still some strange problems,
+e.g. abitest_evil.c fails in unexpected ways.
+
+But I have almost exactly accomplished my goal of
+getting 90% of the test files to pass on SPARC by the
+end of 2006, so I'm happy. Floating point support,
+bugfixing and lots of testing are tasks for 2007.
+
+
+Dec 29 2006
+===========
+
+I worked on nwcc for 7 or 8 hours today, and now about
+65 of the 84 tests pass. Structures and unions can now
+be passed and returned by value, static variables seem
+correct, and structure assignment has been implemented.
+I've also run into many terrible SPARC limitations
+regarding immediate operands above 4095; Addition and
+subtraction, as well as stack variable addressing with
+big offsets, should be working now. I've also fixed all
+visible sign- and zero extension bugs, and many other
+things which are too numerous to remember.
+
+In general, the SPARC stuff is getting into shape; Much
+stuff that used to work by coincidence works by design
+now.
+
+Some basics of variadic functions are also working, but
+I think there are many remaining bugs. Passing of
+variables to functions on the stack also isn't done
+yet, and neither is anything relating to floating
+point. To tell you the truth, input registers are also
+saved locally, even though I think the caller provides a
+register save area; Because I haven't done stack
+argument passing on SPARC yet, I'm still not very deep
+into the ABI.
+
+
+Dec 26 2006
+===========
+
+Around 50 files pass now. I'll soon get into argument
+and return value passing.
+
+
+Dec 24 2006
+===========
+
+About 40 of 80 test files pass on SPARC now. A lot of
+initializer stuff, address calculations, arithmetic
+and memory addressing are now working.
+
+But static variables are still incorrectly addressed
+and a lot of stuff is missing. For example, I haven't
+done anything with function definitions yet, so I
+guess the interesting ABI stuff still has to be done. 
+
+And structure assignment, alloca(), floating point,
+variadic functions, and many other things are also
+completely missing.
+
+I think getting 90% of the test suite files to pass
+by the end of December is a reasonable goal.
+
+
+Dec 23 2006
+===========
+
+Some more SPARC progress, 3 test files pass now. I think
+I also found the primary cause of problems with N64
+while debugging the SPARC stuff; I've already found a
+couple of cross compilation bugs becasuse I'm using 32bit
+SPARC nwcc binaries to generate 64bit SPARC code.
+
+
+Dec 22 2006
+===========
+
+I've finally built nwcc on Solaris/SPARC, and it seems
+that the gcc 3.4.6 I used to do it has some very basic
+bugs which prevent the resulting nwcc binary from working.
+So I used Sun's compiler. Then I got a crash which I could
+trace to a very embarrassing off-by-one stack overflow.
+
+Then ``hello world'' worked. I'm writing the SPARC stuff
+with 32bit and 64bit in mind, but because I don't really
+want to spend 2 or more months on it, I've decided to go
+for 64bit-only support for now.
+
+Some very basic programs involving very trivial expressions
+and function calls are already working. Local variables are
+apparently correctly allocated and addressed now (except
+for those that were passed as stack function arguments!)
+
+sparc_gen.c is based on power_gen.c because PowerPC seems
+to have a more similar stack frame layout than MIPS. But
+sparc_emit_as.c is based on mips_emit_as.c because there is
+so much weird TOC pointer stuff on PowerPC with AIX. These
+decisions seem to have been good. It's very easy to get
+``up and running'' on new architectures by reusing existing
+backends.
+
+I hope to get self-compilation working on SPARC by the end
+of January. Afterwards I'll maybe do another month of
+debugging, or write PA-RISC support. I'll get an Alpha
+manual from a friend who returns from the USA on February,
+so it would be cool to have PA-RISC done soon as well, such
+that I can write Alpha/Tru64 stuff ;-)
+
+Once I have these three done, I can look into embedded
+architectures like ARM and SuperH. I'm not sure about
+whether or not to write Itanium support.
+
+The list of supported architectures will thus hopefully
+read like this in a year from now:
+
+	- x86
+	- AMD64
+	- MIPS
+	- PowerPC
+	- SPARC
+	- PA-RISC
+	- Alpha
+	- ARM
+	- SuperH
+
+... which is certainly very good looking to me. I also need
+to get some ABI support for multiple operating systems, e.g.
+System V ABI on PowerPC for Linux/BSD. When I got the 
+portability stuff out of my way, I can finally look into
+feature completeness in obscure language areas, debugging,
+profiling, and - most importantly - optimization!
+
+
+Dec 21 2006
+===========
+
+I've done some SPARC groundwork, mostly by reading my SPARC
+manual and by studying the output of gcc and SUNWspro, but
+also by doing some infrastructure and basic backend work.
+
+A particularly interesting observation I made while
+playing with the assembler and linker on Solaris, is that
+the SPARC version - unlike the x86 one - does not ship with
+a crt1.o module, which is unfortunately needed to do some
+basic library initialization, and to call main().
+
+So I decided to write my own. Then I did an ``nm'' on
+SUNWspro's crt1.o and quickly decided that this would be
+impossible to write without a lot of time and documentation.
+But then I did the same thing on gcc's crt1.o and found that
+it is VERY simple!
+
+Then I quickly wrote a C stub that just calls main() and
+_exit(), and suddenly the ``hello world'' linked with that
+didn't crash like it did without crt1.o. Next problem:
+Getting argv/environ data to pass to main(). While scanning
+the stack, I found environ, but argv data was missing.
+
+Turns out I trashed the stack by having a C function rather
+than an asm one that can access the stack in its present
+form to get these data before allocating space for saving
+register windows and argument registers for main().
+
+Writing crt1.s (only about 80 lines of code) was a good
+exercise to get some basic familiarity with SPARC assembly.
+It works with 32bit and 64bit ``hello world'' now, though
+I guess maybe I missed some important stuff ...
+
+A SPARC hello world program should also be compilable now,
+but I haven't tested it yet.
+
+
+Dec 18 2006
+===========
+
+Exactly one month has passed since the last release, so it's
+about time to make a new one! I initially considered doing a
+birthday release like last year (my 22nd is on Dec 20), but
+I really can't wait to take a break from debugging and move
+on to writing SPARC support.
+
+This release is primarily a bugfix release. It fixes dozens
+of mostly platform-independent and MIPS-specific bugs, as
+well as a few PowerPC- and AMD64-specific ones. Most
+importantly, there are many profound control structure fixes,
+lots of long long improvements on all platforms, the removal
+of some structure assignment bugs, and K&R function
+definition fixes.
+
+I've also fixed lots of severe MIPS bugs relating to sign and
+zero extension, floating point, and other stuff. Support for
+MIPS is now probably about as good as for PowerPC (and better
+than for PPC64, which doesn't handle floating point right.)
+
+GNU less (22.000 lines of code) can now be compiled correctly
+on at least x86 and MIPS; There are probably many other
+programs of comparable size which work with nwcc now.
+
+Besides the bugfixing, there are also a few new features:
+
+      - DragonFlyBSD is now supported (thanks go to Andre van
+Ruth [www.gnulinux.nl] for providing DragonFly access)
+
+      - A configuration file has been added - see the USAGE
+file for details) 
+
+      - The N64 ABI is now supported on MIPS (but still
+buggier than N32), and N64 IRIX binaries are now available 
+
+      - __builtin_alloca()/alloca() is now supported. This is
+just implemented in terms of malloc()/free() for now, and
+doesn't work on MIPS yet
+
+
+I've also gotten around to compiling a small list of some
+known bugs on the website;
+
+	http://nwcc.sf.net/bugs.html
+
+As you can see, there's still a lot left to fix, but the plan
+for the next couple of weeks is to add SPARC/Solaris support.
+

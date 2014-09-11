@@ -1,0 +1,33 @@
+The following individuals have provided resources (usually
+coupled with bug reports, criticism and suggestions) that
+were beneficial to the development of nwcc:
+
+
+   Frank Fegert
+      Provided PPC64/AIX access
+
+   Anders Gavare [www.gavare.se]
+      Provided AMD64/FreeBSD access
+
+   Graue [www.oceanbase.org/graue/]
+      Provided x86/OpenBSD access   
+
+   OSU OSL [www.osuosl.org]
+      Provided Linux/PPC64 access
+
+   Pongthep Kulkrisada
+      Exposed and reported lots of general bugs
+
+   Robert Ostling [www.robos.org]
+      Provided AMD64/Linux, AMD64/OpenBSD and x86/Linux
+      access      
+
+   Rene Rebe [www.t2-project.org]
+      Provided SPARC/Linux access
+
+   Andre van Ruth [www.gnulinux.nl]
+      Provided SPARC/Solaris and DragonFlyBSD access
+
+
+Many thanks to these helpful people!
+

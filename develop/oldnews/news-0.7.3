@@ -1,0 +1,858 @@
+Nov 11 2007
+===========
+
+I've been debugging SPARC stuff. It's amazing how
+much didn't (and still doesn't) work. I hope to
+release on Dec 1, but maybe not even that is
+realistic. I guess the bugs will keep coming up
+for many more months. Perhaps I should release
+0.7.4 some time in 2009  :-(
+
+
+Nov 2 2007
+==========
+
+I've been debugging PowerPC (32bit) stuff. I found a
+few very fundamental bugs, which I fixed, and also
+implemented the backend-specific code for some new
+features (e.g. variable-length arrays.)
+
+Two major PPC32 problems remain:
+
+	- long long is still broken. I can probably
+accept this for the time being and debug it for the
+next release
+
+	- Big stack offsets and pointer displacements
+are not handled at all. Whoops.
+
+The latter is really terrible and must definitely be
+fixed before the release. It means that nwcc simply
+ignores offset size limitations, such that any stack
+offsets exceeding 32767 or -32768 will yield
+assembler errors because such offsets cannot be
+encoded in single instructions.
+
+Instead the large offsets must be formed in a GPR,
+and then one must indirect through that GPR. nwcc has
+always done this for SPARC because it has SO limited
+offsets (12 bits) that it simply isn't usable at all
+without correct handling of "large offsets". But I
+never did this on PowerPC, where I've just
+encountered this problem, and on MIPS. This will be
+the major remaining fix before I finish that damn
+0.7.4 version.
+
+Another worthwhile thing to do is probably to disable
+__GNUC__ on platforms where this is not required by
+the system headers (AIX, Solaris and IRIX.)
+
+
+Oct 30 2007
+===========
+
+I've been debugging more AMD64 stuff. I'm still not
+happy at all because many things still aren't working,
+such as variadic floating point and many other small
+things. However, I think I've done enough AMD64 for
+now, so I'll look into MIPS, PowerPC and SPARC on the
+next couple of days.
+
+I was going to release 0.7.4 at the end of October,
+i.e. I'm already behind the schedule because tomorrow
+is the last day of October and there is no way I can
+get it all done.
+
+I'll try not to put so much time into MIPS, PowerPC
+and SPARC because there is ALWAYS something left to
+do, so aiming for perfection even if I only care for
+code correctness would take forever.
+
+
+Oct 18 2007
+===========
+
+Some more AMD64 fixes.
+
+
+Oct 15 2007
+===========
+
+Fixed an AMD64 function pointer bug and implemented
+__builtin_offsetof() (this is needed by newer glibc
+versions.)
+
+wget works on AMD64, but lynx, coreutils and vim
+yield compile errors (looks like there are still
+va_list bugs which break at least vim.)
+
+I have yet to try lsof and xterm. Once those work
+too, it is time to move on to MIPS, PPC and SPARC.
+
+
+Oct 10 2007
+===========
+
+I've been revamping GNU C attribute support. Now the
+parsing is much better and more correct, and there's
+a framework for dealing with attributes that take
+arguments.
+
+In fact, I implemented the __aligned__ attribute
+today, which appears to work (but you never know
+with that stuff).......... oh I just saw it doesn't
+work when applied to struct members :-(
+
+I was also going to do attribute __packed__ too, but
+figured that would beam me into a mental hospital
+since the aligned stuff was already so very
+frustrating and disturbing even though it should be
+simpler than packed. Will do it later...
+
+__section__, __alias__, __regparm__, __weak__,
+__constructor__ and __destructor__ are also high
+priority attributes.
+
+Also, __mode__ is totally incomplete and probably
+wrong, yet used very often, so it should also be
+fixed.
+
+
+Oct 03 2007
+===========
+
+Fixed some bugs, implemented GNU C designated
+initializers (trivial).
+
+
+Sep 30 2007
+===========
+
+Some bugfixes for BitchX. lsof seems to work with nwcc
+even though I didn't explicitly debug nwcc for it. This
+may indicate that things are getting stable/reliable.
+
+
+Sep 27 2007
+===========
+
+Implemented __builtin_frame_address() and fixed a few
+K&R function bugs today.
+
+
+Sep 23 2007
+============
+
+I've been mostly slacking off, but I fixed a few bugs
+and implemented hexadecimal floating point constants.
+The latter doesn't work correctly with cross-
+compilation, I suppose, but that's not high priority.
+
+With this stuff sorted out, I can get back to the
+usual bugfixing.
+
+
+Sep 07 2007
+===========
+
+I got designated array initializers working as well
+now. Also, I've almost fully implemented compound
+literals. There are stil a few bugs and incomplete
+parts, e.g.:
+
+	static struct foo *f = &(struct foo){ ... };
+
+... doesn't work because I don't handle &/./-> for
+static (constant) compound literals yet, and I
+suspect that
+
+	void
+	func() {
+		static struct foo f =
+			(struct foo) { ... };
+
+
+... will copy the literal twice - once to ``f''
+where it belongs, and once to an anonymous stack
+location. That's because the check which determines
+whehter the compound literal is static or automatic,
+only looks at scope information and doesn't check
+if the literal is used in a non-global but
+nevertheless static context.
+
+Generally, though, I think the support is already
+fairly good and I can do some other stuff now.
+
+
+Sep 04 2007
+===========
+
+I made some minor bugfixes that I don't even remember
+anymore.
+
+Also, I spent the past three evenings implementing
+designated initializers. This stuff seems to work for
+structures now, but
+
+	- I have not thoroughly tested and controlled
+the results of the test case (desiginit.c) yet
+
+	- I have only tested this on x86
+
+	- This doesn't work with anonymous unions (lol)
+
+	- Designated array initializers are missing,
+and will probably be a bit more difficult
+
+Once that's done I'll do compound literals.
+
+Then maybe position-independent code to get shared
+library creation working.
+
+Then some more heavy debugging on all platforms, and
+then I may perhaps release 0.7.4.
+
+
+Aug 28 2007
+===========
+
+Various MIPS fixes, and a few general ones as well.
+VLAs and alloca() should work on MIPS now (never did
+before!)
+
+
+Aug 22 2007
+===========
+
+Some bugs fixed:
+
+	- The conditional operator parse error in lynx
+
+	- A bug in va_arg()
+
+	- Increment/decrement was missing for floating
+	  point types (this still has to be tested on
+	  MIPS, PPC and SPARC)
+
+	- Null initialization was forgotten for string
+	  initializers;
+
+	          static char buf[10] = "hi";
+
+	  ... thus only allocated and initialized 3
+	  bytes, since 7 zero-initialized bytes were
+	  missing. Another DEVASTATING one,
+	  unbelievable!
+
+lynx compiles now but is of course totally broken and
+can't do anything at all. It is really getting
+depressing, nothing ever works at the first try. I can
+debug, debug, debug, way into eternity, and stuff will
+never be fully correct. It goes on and on and on ...
+
+
+Aug 21 2007
+===========
+
+I've been debugging some more GNU make problems, and now
+it mostly works (though it still says ``clock skew
+detected'' when processing the nwcc Makefile.) I also
+fixed some more typedef and declaration parsing bugs for
+lynx, and conversion of integral types to pointer types.
+
+Also, alloca() and VLA hidden pointers weren't initialized
+correctly, typeof() was still handled wrongly, there was
+an x87 bug in logical AND and OR operators, switch cases
+had the typing and conversions wrong, some sizeof
+expressions for bitwise negation and unary minus were
+wrongly evaluated, inline was handled wrongly in non-GNU
+mode, bitwise long long negation was broken for gas, and
+long long shifting was broken.
+
+And there's always more. This elaborate list of bugs got
+me a tiny bit further, but it's still not done at all.
+There's another parse error in the conditional operator
+waiting for me (see happy_fun_bugs.c), and afterwards
+there will be 50 or so more.
+
+I've fixed about 100 bugs in the past three months but
+there is still a lot to come. That's 100 bugs which only
+surfaced on x86, and I haven't even tried AMD64, PowerPC,
+MIPS and SPARC yet.
+
+Even on x86, I'm only dealing with small to medium-sized
+programs now, I can't imagine how much breakage I'll see
+in Apache, PHP, Firefox, and other really big apps.
+
+
+Aug 19 2007
+===========
+
+Some more bugs fixed. xterm works correctly now, but nwcc
+still generates totally buggy code for GNU make. Some more
+other apps that I tried fail in configure (e.g.some test 
+case hangs in Apache, PHP fails due to absence of libxml2),
+others don't seem to work with non-gcc compilers at all
+(MPlayer demands gcc even if I set CC to nwcc, and even if
+I kludge the configure script to use nwcc for its CC
+variables ...), and still others yield nwcc compiler errors
+(lynx fails due to assignment incompatibility errors.)
+
+I'll probably pick up on the last category and debug lynx
+tomorrow - after gmake, of course.
+
+Today a (non-programmer) friend suggested that it seems to
+him as if nwcc consists entirely of bugs, to which I replied
+that it's 80% bugs and 20% code. :-/
+
+It'll probably take another month or two before I can get
+the really big stuff like Apache to work, and expect any
+given multi-kloc app to work with nwcc.
+
+
+Aug 18 2007
+===========
+
+I fixed that conditional operator bug, and a few others as
+well. I also implemented anonymous unions, as in:
+
+	struct foo {
+		union {
+			int	x;
+			int	y;
+		};
+	} f;
+	f.x = f.y = 123;
+	printf("%d, %d\n", f.x, f.y);
+
+... and conditionals without operands, as in:
+
+	int	x = 5;
+	int	y = x? : 0;   /* y receives value of x */
+
+And I presumably fixed the __builtin_va_copy() bug on AMD64,
+but I haven't tested this yet. Now I can finally also
+compile xterm on at least x86, which is a huge accomplishment
+on its own, but sadly the binary crashes immediately when
+run (nothing else was to be expected anyway.)
+
+Also, I've thrown gcc-core 4.2 at nwcc again, and there were 
+two things of interest to be seen:
+
+	- In GNU mode (nwcc pretends to be gcc), the compile
+fails VERY early on because gcc seems to use EVERY single
+extension it implements itself. The particular feature nwcc
+choked on is hexadecimal floating point constants. So I said
+to myself ``no way am I going to implement this bogus
+feature now'', so I tried compiling it with nwcc -ansi
+
+	- In ANSI mode (nwcc -ansi), the compile seems to
+get quite far. Then I get a syntax error related to a typedef
+name clashing with another declaration. I'll fix this
+tomorrow and then retry it
+
+Now I'm feeling maybe I should revert nwcc's default mode to
+-ansi for applications like gcc which use every GNU feature
+they can think of. However, that will get me into trouble
+with system libraries and headers again (I already got lots
+of warnings about some glibc header #defining __attribute__,
+or something like that, when compiling in ANSI mode.)
+
+There does not seem to be a single right way to deal with
+these langauge differences, but that's not news to me at all.
+I need to put some more thought and work into it.
+
+Oh, hmm, I just noticed that two test cases don't work with
+gas on x86 and thus probably AMD64 :-(
+
+I'll fix that tomorrow.
+
+
+Aug 17 2007
+===========
+
+I fixed a few more bugs. Today I attemptd to get
+__builtin_va_copy() to work on AMD64. I found that it
+probably doesn't work because I coded the implementation
+wrongly. However, that revealed another terrible bug:
+The x86 and AMD64 backends silently ignored some wrong
+address-of requests! So instead of generating an
+instruction to load an address, they didn't generate
+anything.
+
+Thus I added some diagnostic output in emit_addrof(), and
+guess what, it showed me lots of structure bugs! Those
+were all related to anonymous structs. For example, if
+you do
+
+	struct foo	f();
+
+	printf("%d\n", f().x);
+
+... then the return value creates a temporary anonymous
+struct. nwcc didn't handle this, and I was aware of it,
+but it didn't handle other, more common constructs either.
+Such as:
+
+	struct foo	func();
+	void func2(struct foo);
+	func2(func());
+	
+... and in fact this kind of code is used in GNU tar. I
+fixed most of those bugs for all platforms (but only
+tested it on x86 so far), but one bug in the conditional
+operator remains:
+
+
+	void func(struct foo);
+	struct foo f, f2;
+	func(cond? f: f2);
+
+... here, too, an anonymous struct must be created before
+it can be passed to the function.
+
+
+Aug 8 2007
+==========
+
+Some more struct initializer fixes. Maybe they will never
+work right.
+
+
+Aug 7 2007
+==========
+
+I'm quite close to getting vim to work right on x86. I can
+compile all files with nwcc, and the only error I'm getting
+when doing basic editing, is that eval.c causes some error
+message about a corrupted regexp program to pop up when the
+editor starts up.
+
+I corrected another structure initialization bug related to
+wrong implicit zero initializers for struct members that are
+not explicitly initialized. This seems to work for static
+structs now, but the offset calculations for variable struct
+initializers are still performed wrongly (see
+varinit_struct.c in the test suite.)
+
+I also found out that newer glibc versions use designated
+initializers and compound literals in the headers (if in GNU
+mode), so I'm going to support that too. Here's a list of
+things that have to be fixed before I can release 0.7.4:
+
+	- Variable intializers for structs (see above)
+	- __builtin_alloca() (broken)
+	- Basic VLAs for MIPS, SPARC and PowerPC (missing)
+	- Designated initializers
+	- Compound literals
+	- nwcc1 should honor NWCC_ASM
+	- A -gnuc option should be implemented
+	- Hmm, probably lots of other things I'm too tired to
+	  remember now...
+
+Aug 5 2007
+==========
+
+Some more bugfixes for vim. It almost fully works with nwcc
+now.
+
+
+Aug 3 2007
+==========
+
+tar seems to work with nwcc now (at least the core code; I
+haven't checked the lib stuff yet.)
+
+I also made some progress with xterm today, but it seems the
+code is so rotten that I probably won't get it to work right
+in a LONG time. With xterm the question of whether nwcc can
+generate correct doesn't event arise at all, because barely
+any files compile at all. It will take forever to get it to
+compile and work.
+
+Perhaps I should try debugging vim next. I like the vim code
+because it does not seem to use terrible C extensions or
+convulted contructs. On the other hand, I dislike about vim
+that it is full of conditional compilation to enable/disable
+specific features.
+
+
+Aug 2 2007
+==========
+
+I've been debugging some trash code that was generated for
+GNU tar. Now I can compile all main tar files except buffer.c
+and have the results pass my (simplistic) test script.
+
+However, there's also a lot of library code in tar, and I
+haven't attempted compiling that for correctness testing yet.
+
+Maybe I'll give gcc another try when I'm done with tar.
+
+
+Aug 1 2007
+==========
+
+I've fixed a few more typedef bugs, a gas-specific bug, and
+some VLA bugs (simple operations such as assigning to and
+loading from a VLA element weren't working yet.)
+
+Now it seems that gettext (a user of VLAs in GNU tar) can be
+compiled correctly, and tar compiles again for the first time
+after the switch to __GNUC__ = 3.
+
+But it isn't working yet.
+
+I think perhaps I won't make any new releases for a few more
+months to come because stuff doesn't work yet. nwcc 0.7.4
+has to WORK!!!!
+
+
+
+Jul 26 2007
+===========
+
+I've spent the past couple of evenings, as well as this
+evening, implementing the basics of VLAs. Single-dimensional
+VLAs seem to be working on x86 now (theoretically they may
+work on AMD64 too, but that seems kinda doubtful):
+
+	int lol() { ... return blabla; }
+	...
+	char buf[lol()];
+	strcpy(buf, "hello");
+	puts(buf);
+
+This was a lot of work, about 1500 lines of code differences/
+additions, and there is more to come.
+
+Stuff that is still missing:
+
+       - (Correct and tested) support for AMD64, MIPS,
+         PowerPC and SPARC
+
+       - sizeof operator support
+
+       - Pointer arithmetic support
+
+       - Multi-dimension support 
+	
+
+Note also that this implementation - like the builtin alloca
+implementation - uses malloc() and free() instead of the
+stack. Also, I haven't even tested whether the arrays are
+properly deallocated yet.
+
+A lot of stuff left to do ...
+
+
+Jul 22 2007
+===========
+
+I've been debugging some more stuff, and now GNU awk and
+wget also compile. However, GNU tar does not compile
+anymore, because since I bumped __GNUC__ to version 3, it
+now uses variable-length arrays!
+
+I OBVIOUSLY need VLAs now to make progress with bash, gcc,
+tar and probably lots of others.
+
+So I started taking some first steps into that direction.
+I've just followed the path I took for variable
+initializers, and as far as parsing is concerned, that
+already works nicely.
+
+However I'm not sure how to handle all of the other stuff
+yet. But it has to be done, so it will be done.
+
+
+Jul 21 2007
+===========
+
+Today I ran into the GNU-style glibc declaration of the
+wait() function. It goes something like this:
+
+	typedef union {
+		/* ... */
+	} ublah;
+
+	typedef union {
+		union ublah	*up;
+		int		*ip;
+	} __WAIT_ARGS __attribute__((transparent_union));
+
+	extern pid_t	wait(__WAIT_ARGS args);
+
+... where the intent is to allow multiple pointer argument
+types while still keeping a bit of type-checking. Because
+historical implementations used a union argument and new
+implementations (and standards) an int * one, this allows
+both argument types, while still disallowing e.g. char * or
+short * (which would still be allowed if wait()'s paramter
+were made a void * pointer.)
+
+So I implemented this, and found a new problem: GNU make
+checks for __GNUC__ and __GNUC_MINOR__, and if those are
+not equal to or above version 2.5, it simply defines
+__attribute__ to expand to nothing. Thus the system 
+headers which declare the wait() function break. GNU code
+really sucks in that way.
+
+Anyway, so I just bumped __GNUC__ to 3 because it is
+evident that 1 and 2 will not get me anywhere because
+those just don't work anymore nowadays.
+
+Now I can compile GNU tar, GNU make and vim with nwcc,
+but of course none of them works right.
+
+Next I'll maybe do the basics of VLAs to compile more of
+bash and gcc (I'm stuck there). And then I'll debug all
+of that wrong code to work right.
+
+
+Jul 18 2007
+===========
+
+I've fixed a couple more bugs.
+
+I've also tried throwing lots of open source apps at nwcc,
+but amusingly (not to me though), none of them works with
+it.
+
+gcc does not work, neither does gawk, nor xterm, bash or
+tar, or anything else you are likely to try. Now I'm sick
+of the mindless adding of new backends, when you can't
+even compile typical open source stuff with nwcc on any
+supported platform.
+
+This has got to change. Three things I need in the
+immediate future:
+
+     - Variable length arrays (VLAs)
+     
+     - Proper array subscript support in constant
+       expressions
+
+     - Proper address support in constant
+       expressions
+
+Lots of other things which are not that clearly defined
+yet, as well. If I can't get all of that nonsense open
+source code to work right within the next week, I'll put
+all of my vacation into debugging.
+
+I was going to implement ARM support, but this really is
+more important :-/
+
+Some people have told me that tinycc also does not like
+many open source programs, and probably it's quite the
+same for lcc and TenDRA. Getting stuff to work requires
+tons of GNU compatibility features. But it really has
+to be done now.
+
+
+Jul 13 2007
+===========
+
+Self-compilation is working again. I tried compiling bash
+with nwcc, but didn't get very far because it does
+something like
+
+	void	foo();
+	...
+	foo("hello", "world");
+	...
+	foo("hello, "world", "bla");
+	...
+	void foo(char *arg0, char *arg1, char *arg2)
+	{
+		fprintf(blabla, arg0, arg1, arg2);
+	}
+	...
+
+... which nwcc rejects because it notices that the first
+call to foo() took two arguments, and the second doesn't.
+Now this code is obviously completely illegal and I'm
+appalled to see something like this in such an old and
+supposedly mature application.
+
+Even if foo() were declared as a variadic function, it
+would still be illegal because standard C says that
+calls to undeclared variadic functions invoke undefined
+behavior.
+
+However, this is a COMMON problem, it seems. I couldn't
+compile some older texinfo version because of this as
+well. So nwcc will have to be more permissive here and
+just warn instead of erroring out.
+
+By the way, the switch to __GNUC__ = 2 also caused my
+old glibc sys/select.h header to drag in some obscure
+inline asm when using FD_SET()/FD_CLEAR()/FD_ISSET().
+Thus I spent the past couple of hours debugging this
+stuff, and now it seems to work.
+
+
+July 09 2007
+============
+
+Well, I've implemented some more GNU stuff, most notably
+variable struct and array initializers. I haven't tested
+this stuff with structures yet, and it appears to be buggy
+because self-compilation isn't working anymore :-(
+
+I found lots of other bugs I would never have expected to
+be still around. This will become a nice little bugfix
+release.
+
+
+July 01 2007
+============
+
+I ran into a wall today. The major()/minor() system macros
+used by GNU tar do not work on my old SuSE system if
+__GNUC__ is set to a value below 2. So I decided to open a
+huge can of worms by making nwcc bump the __GNUC__ version
+from 1 to 2!
+
+This means that I will run into tons of problems with GNU-
+specific code which does things like this:
+
+	#if __GNUC__ >= 2
+		/* use obscure GNU C 2.x and up feature */
+	#else
+		/* use good, nice, clean, portable code */
+	#endif	
+
+The very first thing I noticed is that GNU tar then uses
+__builtin_memcpy(). So I spent an hour or two implementing
+this for x86, AMD64 and MIPS (PPC/PPC64 and SPARC are not
+done, but it's easy enough to write.)
+
+Then I added support for typenames in typeof() expressions
+such that
+
+	(__typeof__(unsigned char))123;
+
+... works like any other cast.	
+
+But gtar can't get enough GNU features... So look what I
+found:
+
+	wchar_t	wc;
+	...
+	#if __GNUC__ >= 2 && (...)
+		wchat_t cmp_buf[] = { L'\0', L'\0', wc, L'\0', L'\0', L'\0', L'\0' };
+	#else
+		wchat_t cmp_buf[] = { L'\0', L'\0', L'\0', L'\0', L'\0', L'\0', L'\0' };
+		cmp_buf[2] = wc;
+	#endif
+
+
+That's right friends, the authors check the compiler
+version for the sole purpose of using a non-constant array
+initializer if possible, instead of always using the
+portable post-intialization assignment.
+
+Seriously, the guys who wrote this stuff suck.
+
+	... :-(
+
+Look at that snippet above again. It's for real, I'm not
+making this up. Maybe it is some sort of twisted joke
+towards compiler developers like me.
+
+But OK, I will implement non-constant array and structure
+initializers now. That is something I had on my agenda for
+some time anyway because it is needed by C99 and C++.
+
+Those guys who write all of this nonsense code I have to
+support will not beat me that easily, or at least I will
+not give up without a tough battle.
+
+(I have found lots of other terrible constructs in the regex
+code, but fortunately nwcc swallowed most of them.)
+
+
+June 29 2007
+============
+
+Today I fixed a declaration bug which surfaced in the weird
+GNU tar code. A declaration of the form:
+
+	void foo(int (bar()), void *baz);
+
+... would be parsed incorrectly because the closing
+parentheses of the bar() declaration was incorrectly matched
+with the opening parentheses surrounding the whole thing.
+Thus the outer parentheses was assumed to be the end of the
+foo() declarator list, and thus the parser got confused.
+
+As you may imagine, this was somewhat difficult to track
+down because the declaration parser is one of the most
+complex and confusing pieces of nwcc. But now it is fixed,
+and now I can move on to fixing a crash which is also
+being triggered by GNU tar...
+
+Oh, by the way, I didn't even implement __builtin_va_copy()
+today. Instead I just added parsing support, but didn't
+make it generate any code. I'll just add dummy builtin
+stubs for things like that until they are actually really
+needed.
+
+
+June 28 2007
+============
+
+Wow, long time since I wrote the last NEWS entry. Well, I've
+been debugging some long long comparison issues that surfaced
+when compiling gxemul with nwcc. On x86, that is.
+
+But now I'm tired of gxemul because it will probably take 5
+or 10 more years before it really works with nwcc, so I can
+just as well play with smaller programs. I'm currently trying
+to get GNU tar to work with nwcc, which already required me
+fix a few bugs related to enums, union forward declarations,
+etc. And I've implemented a few GNU C features such as
+structure member address constant expressions like
+
+	&((struct foo *)0)->bar:
+
+and pointer arithmetic on void pointers. Next thing I'll do
+is __builtin_va_copy(), probably followed by __builtin_memcpy()
+and __builtin_constant_p(), and probably tons more GNU C trash
+that I'd rather not implement if I had a choice.
+
+My plan is to make a test pack consisting of GNU tar, less,
+gzip, bash, gcc and possibly others. I will use that as a
+(vastly) extended test suite for nwcc.
+
+BTW, I also wrote a small console minesweeper game, but it is
+not integrated into unimpl() yet. Maybe I will also write a
+Tetris clone for unimpl() :D
+
+May 26 2007
+===========
+
+nwcc 0.7.3 is out! This relase is a bugfix release with a
+strong emphasis on floating point support:
+
+	- All x86 (and AMD64 long double) floating point
+calculations have been changed to make heavy use of the stack
+instead of x87 registers for temporary results. As a result,
+there are hopefully no more x87 register problems (which used 
+to render all fp support unusable)
+
+	- On AMD64 many devastating SSE bugs have been fixed.
+In fact, even x87 and SSE comparisons and branches were
+completely broken
+
+	- On PPC32 and PPC64 lots of terrible floating point
+bugs were fixed. In fact, PowerPC may now have the best fp
+support because the ABI uses 8 bytes for long double too,
+thus avoiding the worst source of bugs
+
+In addition, lots of other major and minor bugs relating to
+long long, __func__, static variable initializers, and others
+have been fixed. 
+

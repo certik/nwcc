@@ -1,0 +1,226 @@
+
+nwcc 0.6.6 contains the first implementation of cross-compilation.
+It's still incomplete and unpleasant to use in some ways, but
+pleasant in others!
+
+This file contains an introduction to the problem, the solution
+proposed by nwcc, and how to use it. You should definitely read
+at least the usage instructions before attempting to cross-compile
+with nwcc, because the current version still has a lot of problems
+and open questions you should be aware of.
+
+
+1.	Introduction
+2.	Usage
+	.1	Preprocessor
+	.2	Assembler + linker
+	.3	Utility
+
+
+,-----------------,
+| 1. Introduction |
+`-----------------'
+
+As you probably know if you're reading this, cross-compilation
+means using software that runs on one computer architecture to
+generate code for a different architecture. The thing that makes
+this task more difficult than normal compilation, is that the
+compiler has to be aware of host and target machine properties,
+as well as the differences between them. This primarily affects
+all things relating to numeric constants and constant expressions.
+Consider the following code:
+
+     static unsigned long foo = 1234556 + 777777777;
+
+(Let's ignore the types of the numbers themselves and focus on
+the type of foo.)
+
+... this addition has to be computed at compile-time because the
+value must then already be available to place an initialized
+definition of foo into the generated code. However, the size of
+an ``unsigned long'' is not fixed by the C language, and naturally
+different architectures use different sizes for this type (and in
+some cases also different representations - this is currently
+irrelevant for our purposes.) This means that the value of foo
+cannot be computed without an inside knowledge of what the target
+hosts ``unsigned long'' type looks like; If it's 32 bits and uses
+a typical (2s complement, no padding bits) representation, then
+the resulting value in our example cannot be represented by it.
+Thus the value ``wraps around'' to 469601005. But on a system that
+uses 64 bits for an ``unsigned long'', no wrap-around is required,
+and the value becomes 77779012333.
+
+In other words, if we're compiling for a target architecture that
+differs from the host architecture on which the compiler runs, it
+can't just execute something like the following (vastly
+simplified) code to obtain the result:
+
+
+	unsigned long tmp = 1234556;
+	unsigned long tmp2 = 777777777;
+	unsigned long foo = tmp + tmp2;
+
+	
+An obvious solution to solving this problem is to build the cross-
+compiler in such a way that the resulting binary only supports a
+single target architecture. This permits us to choose at compile
+time a suitable type to evaluate expressions of the target type. 
+
+Then the compiler can do something like this:
+
+	#if TARGET_LONG_SIZE == 32
+	    uint32_t	tmp, tmp2, foo;
+	#elif TARGET_LONG_SIZE == 64
+	    uint64_t tmp, tim2, foo;
+	#endif
+
+	tmp = 1234556;
+	tmp2 = 777777777;
+	foo = tmp + tmp2;
+
+
+My opinion is that this approach is unpleasant to use. I want the
+compiler to be capable of generating code for all supported
+architectures using a single compiler binary. To accomplish this,
+nwcc dynamically maps host types to target types. Let's say you're
+on a 32-bit 80x86 host and wish to generate 64-bit AMD64 code.
+Obviously a plain 32-bit host ``unsigned long'' cannot
+meaningfully be used to emulate the behavior of a 64-bit target
+one. So nwcc detects that a 64-bit host ``unsigned long long'' is
+available which has the same properties as said target type, and
+uses that to emulate it.
+
+	#define ARCH_FOO 1
+	#define ARCH_BAR 2
+	...
+	void	*result;
+	int	result_type;
+	int	target_ulong_sizes[N_ARCHS] = { 4, 8, ... };
+	int	target_ulong_size;
+	int	host_uint_size = calc_host_uint_size();
+	int	host_ulong_size = calc_host_ulong_size(); 
+	int	host_ullong_size = calc_host_ullong_size();
+
+	target_ulong_size = target_ulong_sizes[current_target];
+	if (target_ulong_size == host_uint_size) {
+		static unsigned int	foo, tmp1, tmp2;
+		
+		tmp1 = 1234556;
+		tmp2 = 777777777;
+		foo = tmp1 + tmp2;
+		result = &foo;
+		result_type = TY_UINT;
+	} else if (target_ulong_size == host_ulong_size) {
+		static unsigned long	foo, tmp1, tmp2;
+		....
+	} else {
+		...
+	}	
+
+
+If there is no direct mapping of equivalent types available, some 
+arbitrary precision routines can be used instead, or if the target
+type is smaller than one or more host types, those can still be
+used instead with a bit more work. These fallbacks are currently
+unimplemented because nwcc currently only targets architectures
+with very similar datatypes. It shouldn't be too difficult to add
+support for odd architectures, however.
+
+,-----------,
+| 2. Usage  |
+`-----------'
+
+If you invoke nwcc normally, it will of course generate code for
+the host architecture, and, if requested, also invoke the
+assembler and linker.
+
+To generate code for a different architecture and/or ABI, use
+the -arch and -abi command line options;
+
+	nwcc x.c -arch=amd64          <-- AMD64 code 
+	nwcc x.c -arch=ppc            <-- 32bit PowerPC code
+	nwcc x.c -arch=ppc -abi=aix64 <-- 64bit PowerPC code 
+	nwcc x.c -arch=mips           <-- 64bit (n32) MIPS code
+	nwcc x.c -arch=x86            <-- x86 code
+
+
+	,------------------,
+	| 2.1 Preprocessor |
+	`------------------'
+
+Preprocessing poses a variety of problems. First of all, nwcc
+prefers to use GNU cpp if available, which has to be built for
+a particular target architecture, just like gcc. With the
+currently supported targets, most problems arising from using a
+cpp that wasn't built for cross compilation should be subtle, and
+may in some cases be ignored. The primary problem to watch out
+for is that GNU cpp does not define architecture-specific macros
+such as __i386__, __amd64__, etc, correctly if you're cross-
+compiling with nwcc.
+
+If the default GNU cpp on your host platform doesn't cut it,
+there are two solutions:
+
+	- Use nwcpp
+	- Use a GNU cpp that was built for your target
+
+To build nwcpp, just ``cd'' into nwcc's cpp sub directory, then
+type ``make'', then ``make install''.
+
+In both cases you have to set the NWCC_CPP environment variable
+to the desired preprocessor; Refer to the USAGE file.
+
+With some libraries there may also be problems with cpp's private
+definitions of limits.h constants, which brings us to the next
+problem: You should avoid using your host systems header files to
+cross-compile for a differing target. Again, if you're only
+compiling simple stuff, possibly even to only read some code for
+a different platform, this may not affect you. But if it does,
+you should:
+
+	- Pass -nostdinc on the nwcc command line
+	- If you need a replacement set of headers, also pass
+          -I/path/to/dir/with/your/headers on the command line	
+
+
+	,------------------------,
+	| 2.2 Assembler + linker |
+	`------------------------'
+
+Note that if you're cross-compiling, nwcc implicitly assumes you
+passed -S on the command line, i.e. it will only generate an .asm
+output file, but not assemble and link it. This initial version
+leaves you on your own as far as these things are concerned,
+sorry. You should get yourself a binutils toolchain and build a
+cross-assembler/linker for your desired target platform. Note
+that nwcc can currently only generate gas code for x86 and AMD64;
+And you have to set the NWCC_ASM environment variable to ``gas''
+to make it do so.
+
+
+	,-------------,
+	| 2.3 Utility |
+	`-------------'
+
+Given the current set of supported platforms, nwcc's cross
+compilation support is not expected to be really used in
+practice. Sure - it's interesting to read code for other
+architectures, and some people will certainly do that (me too!)
+
+But cross-compiling for x86 and AMD64 does not seem overly
+useful to me. PowerPC and MIPS are more interesting, but:
+
+        - nwcc currently only generates 64bit (n32) code. o32
+support may or may not be implemented in the near future	
+
+        - It can generate 32bit and 64bit PowerPC code, but
+only for the AIX ABI, and this implies always position-independent
+code that probably isn't going to be usable for an embedded
+PPC-based system
+
+Put short, the current implementation is just a framework for
+this kind of thing, and it's only with embedded architecture
+support that it will become really interesting.
+
+	- Nils R. Weller, 11/16/2006
+

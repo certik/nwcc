@@ -1,0 +1,613 @@
+#!/bin/sh
+
+SYS=`uname -s`
+
+echo "Configuring nwcc for $SYS ... "
+
+GCCPATHS="gcc /usr/local/bin/gcc"
+
+if test "$SYS" = "SunOS"; then
+	AWK=nawk
+
+	# I've had problems with gcc on Solaris/SPARC; it does not like
+	# many things relating to static variables. The most easily
+	# reproducible problem is tried below
+
+	# First check whether we have gcc at all
+	echo 'int main() { return 0; }' >_testprog.c
+
+	echo "Checking for gcc/SPARC bug ..."
+
+	for i in $GCCPATHS; do
+		/usr/xpg4/bin/sh -c "$i _testprog.c -o _testprog 2>/dev/null >/dev/null"
+		if test -x _testprog; then
+			# Yes, we have gcc! Now check whether it has the
+			# static variable bugs
+			cat >_testprog.c <<EOF
+#include <stdio.h>
+int
+main() {
+	static int	foo;
+	printf("%d\n", foo);
+	return 0;
+}
+EOF
+			/usr/xpg4/bin/sh -c "$i _testprog.c -o _testprog 2>/dev/null >/dev/null"
+			if test -x _testprog; then
+				if test `./_testprog` != "0"; then
+			echo "    gcc looks buggy on this system!"
+			echo "    Will attempt to use Sun's compiler instead."
+			echo "    If you only have gcc, you should upgrade to"
+			echo "    a newer version, or get Sun's compiler"
+			echo "    (which is free now.)"
+					GCCPATHS=""
+					ABI=-xarch=v9
+					PICFLAGS=-KPIC
+				else
+			echo "    gcc looks usable on this system!"
+					PICFLAGS=-KPIC
+			echo "    If, however, it generates bad nwcc binaries,"
+			echo "    you should upgrade to a newer version, or"
+			echo "    get Sun's compiler (which is free now.)"
+					ABI=-m64
+				fi
+			fi
+			break
+		fi
+	done
+else
+	AWK=awk
+fi
+
+rm -f config.h
+echo "/* Generated configuration header - do not edit! */" >config.h
+echo "#ifndef _CONFIG_H" >>config.h
+echo "#define _CONFIG_H" >>config.h
+
+# 03/03/09: Get libgcc path so we can rewrite -lgcc to the absolute
+# path (otherwise we will get linker error because the library resides
+# in some spooky gcc-specific directory)
+#
+# Don't print a status message about this because that would imply
+# that nwcc depends on -lgcc, but we really only need it for users
+# of the library
+#
+# 07/21/09: As of July 2009, we are using libgcc for long double
+# conversion routines on Linux/MIPS and Linux/PPC
+# The configure check is now done much earlier so we can build
+# libnwcc in configure (with different bit'ness) and still access
+# config.h from it
+
+#printf "Looking up libgcc path ... "
+GCC=gcc
+LIBGCC=`gcc -print-libgcc-file-name 2>/dev/null` || {
+	# 2009-07-30 mirabilos: try $CC if gcc errors out / is not found
+	GCC=${CC-cc}
+	LIBGCC=`$GCC -print-libgcc-file-name 2>/dev/null` || GCC=gcc #false
+}
+
+if test "$LIBGCC" != ""; then
+	echo "#define LIBGCC_PATH \"$LIBGCC\"" >>config.h
+	if test `uname -s` = Linux; then
+		if  test `uname -m` = mips64; then
+			LIBGCC64=`$GCC -mabi=64 -print-libgcc-file-name 2>/dev/null`
+			LIBGCCN32=`$GCC -mabi=n32 -print-libgcc-file-name 2>/dev/null`
+			if test "$LIBGCC64" != ""; then
+				echo "#define LIBGCC_PATH_N64 \"$LIBGCC64\"" >>config.h
+			fi
+			if test "$LIBGCCN32" != ""; then
+				echo "#define LIBGCC_PATH_N32 \"$LIBGCCN32\"" >>config.h
+			fi
+		fi
+	fi
+else
+	:
+#	echo error
+fi
+
+# echo '#if (defined __mips__ && defined __linux__ && defined LIBGCC_PATH) \' >>config.h
+# echo '        || (defined _ARCH_PPC && defined __linux__ && defined LIBGCC_PATH)' >>config.h
+
+# 07/25/09: Don't use this for PPC! XXX Should we?
+echo '#if (defined __mips__ && defined __linux__ && defined LIBGCC_PATH)' >>config.h
+echo '#    define USE_LIBGCC 1' >>config.h
+echo '#endif' >>config.h
+
+
+
+
+for i in "$@"; do
+	FIRST=`echo $i | $AWK -F= '{ print $1 }'`
+	SECOND=`echo $i | $AWK -F= '{ print $2 }'`
+	if test "$FIRST" = "--installprefix"; then
+		if test "$SECOND" = ""; then
+			echo "Need argument for --installprefix!"
+			exit 1
+		fi
+		echo "#define INSTALLDIR \"$SECOND\"" >>config.h
+		echo "'make install' will install to \"$SECOND\""
+	elif test "$FIRST" = "--nocpp"; then
+		NOCPP=yes
+	elif test "$FIRST" = "--nocross"; then
+		NOCROSS=yes
+		echo '#define CONF_NO_CROSS 1' >> config.h
+	elif test "$FIRST" = "--notgnu"; then
+		# 05/19/09: Don't define __GNUC__ (unless requested using
+		# the -gnu command line option). This overrides the default
+		# on platforms where __GNUC__ is usually enabled (Linux,
+		# FreeBSD, etc)
+		echo '#define CONF_NOT_GNU 1' >> config.h
+	elif test "$FIRST" = "--gnu"; then
+		# 05/19/09: Define __GNUC__ (unless disabled using the
+		# -notgnu command line option). This overrides the default
+		# on platforms where __GNUC__ is usually disabled (Mac OS X,
+		# AIX, IRIX, Solaris)
+		echo '#define CONF_IS_GNU 1' >> config.h
+	elif test "$FIRST" = "--color"; then
+		# 05/19/09: Color warning and error messages. This is a
+		# quick proof of concept kludge which does not distinguish
+		# between mandatory and extended warnings yet (and uses
+		# hardcoded ANSI sequences
+		# The -color option can be used instead (e.g. by putting
+		# it into the config file
+		# The -uncolor option can be used to disable them if the
+		# default is to enable it
+		echo '#define CONF_COLOR_OUTPUT 1' >> config.h
+	else
+		if test "$FIRST" != "--help"; then
+			echo "Unknown option \"$FIRST\""
+		fi
+		echo "Supported options are:"
+		echo
+		echo "--installprefix=/path/to/install/dir"
+		echo
+		echo "... changes the top install directory from /usr/local"
+		echo "to /path/to/install/dir"
+		echo
+		echo "--nocpp"
+		echo
+		echo "... does not compile and install nwcpp, nwcc's "
+		echo "(rather immature) preprocessor. Note that a known"
+		echo "system preprocessor is always used by default if"
+		echo "available."
+		echo
+		echo "--nocross"
+		echo
+		echo "... does not compile for targets other than the"
+		echo "host architecture. This will save about half of"
+		echo "the time needed to build nwcc."
+#		echo "You can set the CC environment variable if you wish"
+#		echo "to use a non-default compiler for compilation."
+#		echo
+#		echo "E.g. in bash do \`CC=/usr/local/bin/gcc ./configure'"
+#		echo "Or in tcsh \`setenv CC /usr/local/bin/gcc'"
+		exit 1
+	fi	
+done
+
+# Now we get the compiler if CC is not set. It's important to use a prototype
+# for main and also the ``const'' keyword to rule out K&R compilers
+if test "$CC" = ""; then
+	echo 'int main(void) { const char *str = "hello world"; puts(str); }' \
+		>_testprog.c
+	for i in `echo $GCCPATHS cc /opt/SUNWspro/bin/cc xlC nwcc /usr/local/bin/nwcc`; do 
+		if test "$SYS" = SunOS; then 
+			/usr/xpg4/bin/sh -c \
+			"$i _testprog.c -o _testprog 2>/dev/null >/dev/null"
+		else
+			$i _testprog.c -o _testprog 2>/dev/null >/dev/null
+		fi
+		if test -x _testprog; then
+			CC=$i
+			break;
+		fi
+	done
+fi
+if test "$CC" = ""; then
+	echo
+	echo "ERROR: Cannot find suitable C compiler! If you do have"
+	echo "one, you may have to adjust your PATH environment"
+	echo "variable. Otherwise you can set the CC variable to the"
+	echo "full compiler path."
+	exit 1
+fi
+echo "Using $CC as compiler ..."
+if echo $CC | grep gcc >/dev/null || $CC -v 2>&1 | grep gcc >/dev/null; then
+	CFLAGS='$(ABI) -Wall -W -ggdb -g -DHAVE_LLONG'
+	PICFLAGS=-fpic
+else
+	CFLAGS='$(ABI) -g -DHAVE_LLONG'
+	if test "$PICFLAGS" = ""; then
+		PICFLAGS=-fpic
+	fi
+fi
+echo "    Setting CFLAGS to $CFLAGS"
+echo "    Setting PICFLAGS to $PICFLAGS"
+
+
+
+checklibdir() {
+	if test -d $1; then
+		# directory exists
+		if test "$1/libc.so" && test "$1/crt1.o"; then
+			# and has relevant libraries
+			if file "$1/crt1.o" | grep $2 >/dev/null; then
+				# ... with correct bitness
+				return 0 
+			fi
+		fi
+	fi
+
+	return 1 
+}
+
+
+
+echo 'int main() { puts(" all gnoooh you can eat"); }' >_test.c
+$GCC -E -D__GNUC__ _test.c >_junk 2>&1
+OUTPUT=`cat _junk`
+if echo $OUTPUT | grep __GNUC__ | grep warning >/dev/null; then
+	echo '#define GNUBYDEFAULT' >>config.h
+else
+	touch config.h
+fi
+rm _test.c _junk >/dev/null 2>/dev/null
+
+if test "$SYS" = "AIX"; then
+	# XXX this assumes gcc and the compilation of extlibnwcc.o
+	# really belongs into the Makefile :-(
+	echo '#include <stdio.h>' >_test.c
+	printf 'int main() { printf("%%d\\n", (int)sizeof(char *)); }\n' >>_test.c
+	if $GCC -maix64 _test.c -o a.out >/dev/null 2>/dev/null; then
+		SIZE=`./a.out`
+		if test "$SIZE" = "8"; then
+			echo '#define HAVE_64BIT' >>config.h
+
+                        echo "#endif /* #ifndef _CONFIG_H */" >>config.h
+                        CONFIG_H_COMPLETE=yes
+
+			echo "Building 64bit libnwcc ..."
+			$GCC -maix64 -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc64.o 
+			echo "Building 32bit libnwcc ..."
+			$GCC -maix32 -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc32.o
+
+			# XXX On AIX all code is position independent so those
+			# separate dynextlibnwcc objects are not really needed
+			cp extlibnwcc32.o dynextlibnwcc32.o
+			cp extlibnwcc64.o dynextlibnwcc64.o
+
+			echo
+			echo "nwcc will be built as a 32bit program! Use"
+			echo
+			echo '      make ABI=-maix64'
+			echo
+			echo "to build 64bit binaries instead. Note that"
+			echo "either way you can still use the -abi=aix32"
+			echo "and -abi=aix64 nwcc command line flags to"
+			echo "specifically request generating code of"
+			echo "different bitness."
+		fi
+	fi
+	rm -f _test.c a.out
+elif test "$SYS" = Linux; then
+	if test "`uname -m`" = x86_64; then
+		# 07/24/12: The library situation has deteriorated further; we need to
+		# resolve the confusion between lib, lib32, lib64 and others. For now we just
+		# do a simplistic basic libc.so and crt module check without looking 
+		# at other files.
+		# This could possibly benefit from asking gcc instead, but that's an
+		# undesirable gcc dependency and I'm a bit wary of being dragged into
+		# private gcc directories
+		if checklibdir /usr/lib64 64-bit; then
+			LIBDIR_64=/usr/lib64/
+		else
+			# Attempt sub directory
+			if checklibdir /usr/lib64/x86_64-linux-gnu 64-bit; then
+				# Probably nonsensical?
+				LIBDIR_64=/usr/lib64/x86_64-linux-gnu/
+			else
+				# Attempt /usr/lib instead
+				if checklibdir /usr/lib 64-bit; then
+					LIBDIR_64=/usr/lib/
+				else
+					# Attempt sub directory
+					if checklibdir /usr/lib/x86_64-linux-gnu 64-bit; then
+						LIBDIR_64=/usr/lib/x86_64-linux-gnu/
+					fi
+				fi
+			fi
+		fi
+		# Check 64bit runtime linker
+		if test "/lib64/ld-linux-x86-64.so.2"; then
+			RTLDDIR_64="/lib64/"
+		else
+			if test "/lib/ld-linux-x86-64.so.2"; then
+				RTLDDIR_64="/lib/"
+			else
+				if test "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"; then
+					RTLDDIR_64="/lib/x86_64-linux-gnu/"
+				fi
+			fi
+
+		fi
+
+		# Check 32bit-libs
+		if checklibdir /usr/lib32 32-bit; then
+			LIBDIR_32=/usr/lib32/
+		else
+			# Attempt sub directory
+			if checklibdir /usr/lib32/i686-linux-gnu 32-bit; then
+				# Probably nonsensical?
+				LIBDIR_32=/usr/lib32/i686-linux-gnu/
+			else
+				# Attempt /usr/lib instead
+				if checklibdir /usr/lib 32-bit; then
+					LIBDIR_32=/usr/lib/
+				else
+					# Attempt sub directory
+					if checklibdir /usr/lib/i686-linux-gnu 32-bit; then
+						LIBDIR_32=/usr/lib/i686-linux-gnu/
+					fi
+				fi
+			fi
+		fi
+
+		if test "$LIBDIR_32" = ""; then
+			# Try this once more with "i386-linux-gnu" instead of
+			# "i686-linux-gnu"
+
+			if checklibdir /usr/lib32/i386-linux-gnu 32-bit; then
+				# Probably nonsensical?
+				LIBDIR_32=/usr/lib32/i386-linux-gnu/
+			else
+				# Attempt /usr/lib instead
+				if checklibdir /usr/lib 32-bit; then
+					LIBDIR_32=/usr/lib/
+				else
+					# Attempt sub directory
+					if checklibdir /usr/lib/i386-linux-gnu 32-bit; then
+						LIBDIR_32=/usr/lib/i386-linux-gnu/
+					fi
+				fi
+			fi
+		fi
+
+
+		# Check 32bit runtime linker
+		if test "/lib32/ld-linux.so.2"; then
+			RTLDDIR_32="/lib32/"
+		else
+			if test "/lib/ld-linux.so.2"; then
+				RTLDDIR_32="/lib/"
+			else
+				if test "/lib/i686-linux-gnu/ld-linux.so.2"; then
+					RTLDDIR_32="/lib/i686-linux-gnu/"
+				else
+					if test "/lib/i386-linux-gnu/ld-linux.so.2"; then
+						RTLDDIR_32="/lib/i386-linux-gnu/"
+					fi
+				fi
+			fi
+		fi
+
+
+		if test "$LIBDIR_64" != ""; then
+			echo Using 64-bit library directory $LIBDIR_64
+			printf '#define LIBDIR_64 "' >>config.h
+			printf $LIBDIR_64 >>config.h
+			echo '"' >>config.h
+		else
+			echo WARNING: Could not find 64-bit library directory
+		fi
+
+		if test "$RTLDDIR_64" != ""; then
+			echo Using 64-bit runtime linker in $RTLDDIR_64
+			printf '#define RTLDDIR_64 "' >>config.h
+			printf $RTLDDIR_64 >>config.h
+			echo '"' >>config.h
+		fi
+
+
+		if test "$LIBDIR_32" != ""; then
+			echo Using 32-bit library directory $LIBDIR_32
+			printf '#define LIBDIR_32 "' >>config.h
+			printf $LIBDIR_32 >>config.h
+			echo '"' >>config.h
+
+			if test "$RTLDDIR_32" != ""; then
+				echo Using 32-bit runtime linker in $RTLDDIR_32
+				printf '#define RTLDDIR_32 "' >>config.h
+				printf $RTLDDIR_32 >>config.h
+				echo '"' >>config.h
+			else
+				echo 'WARNING: Could not find 32-bit runtime linker directory (this installation may only work with 64-bit applications, you will have to recompile nwcc if you ever install and wish to use 32bit support)'
+			fi
+		else
+			echo 'NOTE: Could not find 32-bit library directory (this seems to be a 64-bit-only installation, you will have to recompile nwcc if you ever install and wish to use 32bit support)'
+		fi
+
+	fi
+
+	if test "`uname -m`" = mips64; then
+		# 07/21/09: Linux/MIPS64. Because some Linux systems like
+		# Debian don't install 64bit libraries by default, we first
+		# check whethe the system can do 64bit
+		ABI="-mabi=64"
+
+		echo '#include <stdio.h>' >_testprog.c
+		echo 'int main() { printf("%d\n", (int)sizeof(long)); }' >>_testprog.c
+
+		printf "Checking whether $CC can build 64bit binaries ... "
+		if $CC $ABI _testprog.c -o _testprog >/dev/null 2>/dev/null \
+			&& test -x _testprog \
+			&& test `./_testprog` = 8; then
+			echo OK
+		else
+			echo error
+			echo
+			echo "ERROR:   $CC does not seem capable of building 64bit binaries. This is a "
+			echo "         problem because nwcc on MIPS can only generate 64bit code, and "
+			echo "         should also be compiled as a 64bit program."
+			echo
+			echo "         For example, on Debian you have to install 'multilib' versions"
+			echo "         of gcc and glibc to get 64bit support. The packages are called:"
+			echo
+			echo "                libc6-dev-mips64   and   libc6-dev-mipsn32"
+			echo "                libc6-mips64       and   libc6-mipsn32"
+			echo "                gcc-multilib"
+			echo
+			echo "         This may be different in other distributions (feedback on this"
+			echo "         matter would be much appreciated.)"
+			echo
+			echo "         After installing 64bit support, rerun ./configure."
+			exit 1
+		fi
+	fi
+
+	if test "`uname -m`" = ppc64 || test "`uname -m`" = ppc; then
+		if test "`uname -m`" = ppc64; then
+			echo "Copying 64bit crtbegin/crtend modules from gcc (not provided by the system) ..."
+			cp "`$GCC -print-file-name=crtbegin.o`" crtbegin-64.o
+			cp "`$GCC -print-file-name=crtend.o`" crtend-64.o
+		fi
+		echo "Copying 32bit crtbegin/crtend modules from gcc (not provided by the system) ..."
+		cp "`$GCC -print-file-name=crtbegin.o`" crtbegin-32.o
+		cp "`$GCC -print-file-name=crtend.o`" crtend-32.o
+	fi
+	if test `uname -m` = ppc64; then
+		# XXX this assumes gcc and the compilation of extlibnwcc.o
+		# really belongs into the Makefile :-(
+		echo '#include <stdio.h>' >_test.c
+		printf 'int main() { printf("%%d\\n", (int)sizeof(char *)); }\n' >>_test.c
+		if $GCC -m64 _test.c -o a.out >/dev/null 2>/dev/null; then
+			SIZE=`./a.out`
+			if test "$SIZE" = "8"; then
+				# Currently only 64bit apps have been tested on Linux/PPC64!
+
+				echo '#define HAVE_64BIT' >>config.h
+
+	                        echo "#endif /* #ifndef _CONFIG_H */" >>config.h
+        	                CONFIG_H_COMPLETE=yes
+
+				echo "Building 64bit libnwcc ..."
+				$GCC -m64 -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc64.o 
+				echo "Building 32bit libnwcc ..."
+				$GCC -m32 -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc32.o >/dev/null 2>/dev/null
+	
+				# XXX On Linux/PPC64 all code is position independent so those
+				# separate dynextlibnwcc objects are not really needed
+				cp extlibnwcc32.o dynextlibnwcc32.o
+				cp extlibnwcc64.o dynextlibnwcc64.o
+
+#				echo
+#				echo "nwcc will be built as a 32bit program! Use"
+#				echo
+#				echo '      make ABI=-m64'
+#				echo
+#				echo "to build 64bit binaries instead. Note that"
+#3				echo "either way you can still use the -abi=aix32"
+#				echo "and -abi=aix64 nwcc command line flags to"
+#				echo "specifically request generating code of"
+#				echo "different bitness."
+			fi
+		fi
+		rm -f _test.c a.out
+	fi
+elif test "$SYS" = SunOS; then
+	if test `uname -p` = sparc; then
+		# We have to use our own crt1.s
+		# First build 32bit crt
+		AS_ARGS_32="-DSPARC_PTR_SIZE=4 -DSPARC_PTR_SCALING=2"
+		AS_ARGS_64="-DSPARC_PTR_SIZE=8 -DSPARC_PTR_SCALING=3"
+
+		echo "Building 32bit crt1 ..."
+		/usr/ccs/bin/as -P $AS_ARGS_32 -o crt1-32.o crt1-sparc.s
+
+                echo "#endif /* #ifndef _CONFIG_H */" >>config.h
+                CONFIG_H_COMPLETE=yes
+
+		echo 'int main() { return 0; }' >_test.c
+		if $GCC -m64 _test.c >/dev/null 2>/dev/null; then
+			if ./a.out 2>/dev/null; then  
+				# We're on a 64bit system - build 64bit crt1
+				echo "Building 64bit crt1 ..."
+				/usr/ccs/bin/as -xarch=v9 -P $AS_ARGS_64 -o crt1-64.o crt1-sparc.s
+				echo "Building 64bit libnwcc ..."
+				$GCC -m64 -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc64.o
+				echo "Building 64bit dynamic libnwcc ..."
+				$GCC -m64 -DEXTERNAL_USE libnwcc.c -c -fpic -o dynextlibnwcc64.o
+			fi
+		fi
+	fi	
+elif test "$SYS" = IRIX64; then
+        echo "#endif /* #ifndef _CONFIG_H */" >>config.h
+        CONFIG_H_COMPLETE=yes
+
+	echo "Building n64 libnwcc ..."
+	$GCC -mabi=64 -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc64.o 
+	echo "Building n32 libnwcc ..."
+	$GCC -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc32.o
+	echo "Building n64 dynamic libnwcc ..."
+	$GCC -mabi=64 -DEXTERNAL_USE libnwcc.c -c -fpic -o dynextlibnwcc64.o
+	echo "Building n32 dynamic libnwcc ..."
+	$GCC -DEXTERNAL_USE libnwcc.c -c -fpic -o dynextlibnwcc32.o
+	echo
+	echo "nwcc will be built as an n32 program! Use"
+	echo
+	echo '      make ABI=-mabi=64'
+	echo
+	echo "to build n64 binaries instead. Note that"
+	echo "either way you can still use the -abi=n32"
+	echo "and -abi=n64 nwcc command line flags to"
+	echo "specifically request generating code for"
+	echo "a different ABI."
+fi
+
+
+if test "$CONFIG_H_COMPLETE" != yes; then
+	echo "#endif /* #ifndef _CONFIG_H */" >>config.h
+fi
+
+# if test -f Make.old; then
+# 	:
+# else
+# 	mv Makefile Make.old
+# fi
+
+echo "CC=$CC" >Makefile
+echo "CFLAGS+=$CFLAGS" >>Makefile
+echo "PICFLAGS=$PICFLAGS" >>Makefile
+echo "ABI=$ABI" >>Makefile
+if test "$NOCPP" != yes; then
+	echo "BUILDCPP=cpp" >>Makefile
+fi	
+
+# 12/07/24: Import settings for preprocessor as well (why wasn't this done
+# earlier?!)
+cp Makefile cpp/Makefile
+cat cpp/Makefile.skel >> cpp/Makefile
+
+cat Makefile.skel >> Makefile
+
+if test "$SYS" = Linux; then
+	if test "`uname -m`" = ppc64 || test "`uname -m`" = ppc; then
+		echo "!!!!!!!!!!!!!!!!!!! NOTE: !!!!!!!!!!!!!!!!!!!!!!"
+		echo "!!! nwcc on PPC easily runs out of TOC space !!!"
+		echo "!!! for large programs. If you get assembler !!!"
+		echo "!!! errors, recompile your program with the  !!!"
+		echo "!!! -mminimal-toc option.                    !!!"
+		echo "!!! If this happens too frequently, you may  !!!"
+		echo "!!! wish to put this line:                   !!!"
+		echo "!!!                                          !!!"
+		echo "!!!     options = mminimal-toc               !!!"
+		echo "!!!                                          !!!"
+		echo "!!! ... into the file ~/.nwcc/nwcc.conf or   !!!"
+		echo "!!! INSTALLDIR/nwcc/nwcc.conf.               !!!"
+		echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	fi
+fi	
+
+
+echo
+echo You may type \`make\' now
+

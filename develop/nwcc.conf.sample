@@ -1,0 +1,16 @@
+# Specifies target architecture
+# Acceptable values are x86, ppc, mips, amd64
+target = amd64
+
+# Specifies assembler
+# Acceptable values on x86 are nasm and gas,
+# and on amd64 yasm and gas. gas is faster!
+asm = gas
+ 
+# Specifies ABI
+# Acceptable values on PPC are aix32 and aix64
+# abi = aix64
+
+# Specifies some other stuff
+options = ansi lpthread
+

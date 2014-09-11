@@ -1,0 +1,394 @@
+
+The nwcc C compiler
+  ... version 0.8.2
+  ... (c) Nils Weller 2003 - 2011
+===================
+
+
+1. Installation
+2. Command line options and input files
+3. Configuration file
+4. Using nwcc in a GNU world
+5. Preprocessor
+6. Assembler
+
+  _________________
+,/                 \,
+| 1. Installation   |
+`\_________________/'
+
+If you want to do a normal nwcc installation to /usr/local/nwcc and
+/usr/local/bin (or possibly a custom path - see README.first for
+configure's --installprefix option), just type ``make install''. For
+binary distributions, type ``./install.sh'' instead (and ideally read
+the distribution-specific README as well!)
+
+However, it may be desirable not to install nwcc for one reason or
+another. In order to use nwcc without installation, it is necessary
+to set the NWCC_CC1 environment variable to the path of the nwcc1
+binary, e.g.;
+
+      setenv NWCC_CC1 /home/user/nwcc_0.6.4/nwcc1     # for (t)csh
+
+      or
+
+      export NWCC_CC1=/home/user/nwcc_0.6.4/nwcc1     # for (ba)sh
+
+Furthermore, it may be necessary to link libnwcc.o manually in
+order to use its software long long implementation if your programs
+use that type (this is not necessary on 64bit systems like AMD64
+and MIPS64);
+
+      ./nwcc prog.c extlibnwcc.o
+
+  ________________________________________
+,/                                        \,
+| 2. Command line options and input files  |
+`\________________________________________/'
+  
+
+	2.1 General
+	===========
+
+The lack of features in nwcc is reflected by the lack of command line
+options. The -c, -o, -S, -l, -D and -I flags known from other compilers
+are available, though (in addition, many gcc flags are accepted but
+ignored);
+
+nwcc -c foo.c     <-- create object file foo.o from foo.c
+nwcc foo.c        <-- create executable file a.out from foo.c
+nwcc *.c -o foo   <-- create executable file foo from all *.c files 
+nwcc -S foo.c     <-- compile foo.c to foo.asm, but do not assemble 
+nwcc foo.c -llib  <-- create executable file a.out, link with library
+                      ``lib''
+nwcc foo.c -DFOO=bar <-- define preprocessing macro FOO with value bar
+nwcc foo.c -Iinclude/ <-- have preprocessor search additional include
+                          files in directory ``include''
+
+You can also pass .asm and .o files on the command line in order to
+assemble and/or link them with the resulting binary.
+
+If you wish to use ``long long'' arithmetic operations that aren't
+implemented in hardware on x86, but do not want to install the compiler,
+you manually have to link your program with libnwcc.o in order to use
+its software implementation;
+
+	nwcc prog.c libnwcc.o
+
+nwcc can generate position-independent code for shared libraries on x86,
+AMD64, SPARC and PPC. It accepts the gcc options -fPIC/-fpic and -shared.
+
+
+	2.2 Compiler identity
+	=====================
+
+Programs can detect that they are being compiled with nwcc by checking
+for the preprocessor macro __NWCC__
+
+#ifdef __NWCC__
+	puts("Compiled with nwcc");
+#endif	
+
+Traditionally nwcc also defined __GNUC__ by default on most platforms,
+thereby claiming to be gcc to C libraries and programs who care to
+check for this. The default is now NOT to define __GNUC__, but you
+can still ask nwcc to so by compiling with
+
+	nwcc -gnu
+
+You can alternatively also put
+
+	options = gnu
+
+... into your ~/.nwcc/nwcc.conf fille, or build nwcc with the --gnu
+configure option (in the latter case you can still undo the effect by
+using the -notgnu command line option).
+
+
+
+	2.3 Optimization
+	===============
+
+There is no optimization that you could enable via command line options
+yet and it will take some time before such options will be available; My
+take is that simple optimizations should be enabled by default - and
+sophisticated ones are not going to be available any time soon.
+
+
+	2.1 Stack protection
+	====================
+
+nwcc has a very preliminary stack buffer overflow protection feature,
+which is only available on x86 and AMD64. Note that this feature has
+not been used much and may be buggy (a fundamental bug was fixed in
+nwcc 0.8.2, but there may be more).
+
+Compiling with
+
+	nwcc -stackprotect prog.c
+
+This will cause every ``ret'' instruction in every function to check for
+stack corruption, which is achieved by saving the return address before
+all local variables upon entering the function.
+
+
+	2.2 Colored output
+	==================
+
+nwcc can color warning and error messages. You can request this by
+compiling with
+
+	nwcc -color
+
+Apart from putting "options = color" into your config file, you can also
+make this the default by building with configure --color.
+
+Note that this hastily implemented feature is quite primitive and only
+distinguishes between errors and warnings; It does not, for example, flag
+mandatory diagnostics as such.
+
+
+	2.3 "Stupid" tracing
+	====================
+
+nwcc has a severely limited tracing option, which is superficially similar
+to ltrace/strace/truss/tusc, but prints trace messages for functions of
+the compiled program rather than libc library calls or system calls.
+
+This function is quite primitive (does not display function arguments)
+and was rapidly developed to debug a certain program compiled by nwcc.
+It is only available on x86, and only for gas (not nasm), and it may be
+buggy in unknown ways.
+
+In every file compiled with
+
+	nwcc -stupidtrace
+
+... every function defined in it will at first print its own name if the
+NWCC_STUPIDTRACE environment variable is set.
+
+	nils@trashcan ~/nwcc_ng [0]>  cat x.c
+	int main() { return 0; }
+
+	nils@trashcan ~/nwcc_ng [0]>  ./nwcc -stupidtrace x.c
+	/var/tmp/cpp0.cpp - 0 error(s), 0 warning(s)
+	nils@trashcan ~/nwcc_ng [0]>  export NWCC_STUPIDTRACE=1
+	nils@trashcan ~/nwcc_ng [0]>  ./a.out
+	--- (trace) --- main
+	nils@trashcan ~/nwcc_ng [0]>  
+
+
+  ______________________
+,/                      \,
+| 3. Configuration file  |
+`\______________________/'
+
+You can use a configuration file to hard-code some nwcc options that 
+that you always want to be used (unless overridden by command line
+options.) For example, if you want to use nwcc as a cross-compiler,
+you may not want to use the -arch and -abi options all the time;
+You could add a default arch/abi selection to the configuration file.
+
+nwcc allows you to have at most two configuration files, both of
+which are optional:
+
+	- A global one that is shared by all system users. This is
+stored in the installation directory under the name nwcc.conf, by
+default /usr/local/nwcc/nwcc.conf
+
+	- A local one that only applies to a single user account.
+This is stored in the user's home directory, in the sub-directory
+.nwcc, e.g. /home/nils/.nwcc/nwcc.conf
+
+The syntax of these files is very simple. There are currently
+only two directives:
+
+	optionname = arg1 arg2 ...
+
+... assigns arguments arg1, arg2, etc., to the variable named by
+optionname.
+
+	undef optionname
+
+... deletes the contents of the variable named by optionname. The 
+following variables are currently recognized:
+
+        - target:    This allows you to choose a default target
+                     architecture for which to generate code (see
+                     the CROSSCOMP file) 
+
+        - abi:       This allows you to choose a default ABI
+
+        - asm:       This allows you to choose a default assembler
+                     to use (see the assembler section in this
+                     file)
+		     
+	- options:   This allows you to pass arbitrary options and
+                     files
+
+Basically you can do everything with the ``options'' variable; All
+others are just syntactic sugar. nwcc will transform the config
+files into command line options, and append these to the real
+command line options. If there are duplicated options, the command
+line version always wins.
+
+Here's an example file:
+
+--~/.nwcc/nwcc.conf--
+
+# This is a comment
+options = ansi pedantic
+target = mips
+
+---------------------
+
+... if you compile a file foo.c with the command ``nwcc foo.c'',
+this configuration will cause nwcc to behave as if it had been
+invoked as ``nwcc foo.c -ansi -pedantic -arch=mips''. If however
+you compile with ``nwcc foo.c -arch=x86'', the x86 request wins
+over the MIPS one in the config file.
+
+If you're using two config files that assign arguments to the
+``options'' variable, the contents will be merged (duplicated
+arguments are ignored.) Other duplicate variable definitions,
+such as target/abi, are overriden by the user-specific config
+file.
+
+You can also use the ``undef'' directive to ignore system-wide
+configuration entries;
+
+          # This is a user-specific config file. We want to
+          # ignore the system-wide ``options'' settings, and
+          # only use our own (no merging)!
+          undef	options
+          options = ansi	  
+
+  ____________________________
+,/                            \,
+| 4. Using nwcc in a GNU world |
+`\____________________________/'
+
+(There's an updated and more complete discussion of this topic on
+the nwcc website. See: http://nwcc.sourceforge.net/nwccgnu.html )
+
+
+The defacto standard compiler in today's open-source world is obviously
+gcc; Even nwcc itself prefers to use its preprocessor. This has various
+impliciations which affect the operation of nwcc, most notably:
+
+        - There are gcc-specific build scripts using compiler options
+which are not understood or ignored by nwcc	
+
+        - There are many application using a wide variety of GNU C
+constructs, not all of which are supported by nwcc and other compilers,
+thus tying the application to gcc or fully gcc-compatible compilers
+
+        - There are some operating systems which do not support non-GNU
+compilers. For example, parts of FreeBSD's header files ignore non-GNU
+compilers
+
+
+The way gcc and gcc-compatible compilers can signal their GNUness to
+applications and system headers, is by defining the __GNUC__ macro.
+nwcc defines this macro by default because that is the only way to get
+the same level of functionality out of the glibc and FreeBSD headers
+as gcc. As stated above, if we don't define it on FreeBSD, the headers
+are essentially useless. However, on glibc, omission also causes 
+specific function declarations to become unavailable. Furthermore, it
+causes C99 features such as LLONG_MAX/ULLONG_MAX from limits.h to
+become unavailable.
+
+However, defining __GNUC__ also causes problems. There are applications
+which specifically test for __GNUC__ to determine whether they can make
+use of GNU C features. If those applications use unsupported features,
+we may be able to make them work by not defining __GNUC__.
+
+If you invoke nwcc with the -ansi option, it won't define __GNUC__. You
+can use the config file to pass some standard flags to build scripts,
+such as -ansi itself:
+
+	options = ansi
+
+or to define __GNUC__ even when -ansi is used, add
+
+	options = D__GNUC__
+
+to your config. Or to undefine __GNUC__ 
+
+	options = U__GNUC__
+
+  __________________
+,/                  \,
+| 5. Preprocessor    |
+`\__________________/'
+
+nwcc, being a plain C compiler, needs various external tools in order
+to build object and executable files:
+
+      - A preprocessor
+      - An assembler
+      - A linker
+
+The linker is not variable, but the preprocessor and assembler to be
+used can be chosen in some circumstances. In particular, nwcc prefers
+to use GNU cpp, but another preprocessor - nwcpp - is available. This
+preprocessor is primarily intended to replace GNU cpp on systems
+without gcc installed, but is too buggy and incomplete to replace it
+in general. If cpp is available, it will be used. If it isn't,
+nwcc attempts to use /usr/local/nwcc/bin/nwcpp. Note that nwcpp is
+not compiled and installed by default because systems that can
+compile nwcc are very likely to have cpp installed. Nonetheless, it
+is possible to use the NWCC_CPP environment variable to override the
+default preprocessor preference;
+
+        setenv NWCC_CPP nwcpp      # for (t)csh
+
+	or
+
+        export NWCC_CPP=nwcpp      # for sh/ksh/bash
+
+
+You can also use the command line option 
+
+	-cpp=nwcpp
+	
+or the config file option
+
+	cpp = nwcpp
+
+In all of these cases you can supply an absolute file path (which
+must begin with a /) to the nwcpp binary to override the default
+nwcpp binary.
+
+  ______________
+,/              \,
+| 6. Assembler   |
+`\______________/'
+
+nwcc only supports one assembler each on MIPS and PPC systems; SGI and
+IBM as, respectively.
+
+On x86, nwcc supports the nasm, yasm, nwasm and gas assemblers. On
+AMD64, yasm and gas are supported. You can use the -asm command line
+option to select the desired assembler;
+
+    nwcc foo.c -asm=gas
+    nwcc foo.c -asm=nasm
+    nwcc foo.c -asm=nwasm
+    nwcc foo.c -asm=yasm
+
+Or, alternately, set the NWCC_ASM environment variable;
+
+    nwcc foo.c        <-- here nwcc uses the default assembler (gas)
+    export NWCC_ASM=nasm  (use ``setenv NWCC_ASM nasm'' for (t)csh!)
+    nwcc foo.c        <-- now it uses nasm
+
+Since version 0.7.4, gas is the default assembler on x86 and AMD64,
+and consequently receives more testing. Bugs are more likely to be
+present in nasm and yasm support.
+
+You can always use the configuration file to select nasm/yasm  as
+default assembler;
+
+	echo asm = nasm >> ~/.nwcc/nwcc.conf
+

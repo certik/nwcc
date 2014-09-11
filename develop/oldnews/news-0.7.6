@@ -1,0 +1,637 @@
+Feb 02 2009
+===========
+
+I'm still cutting my teeth off on this goddamn TOC bullshit!
+What the HELL is that about!!!!!!!!
+
+I wasted a whole evening for nothing because my workaround
+doesn't work at all.
+
+	ld 4, _Toc__Static_fk1 - .LCTOC1(14)
+
+Here the assembler apparently computes a constant expression
+of both labels. There are no relocations behind my back (or
+they may be but I haven't checked). I can use parentheses
+around them to emphasize that they are combined into a
+displacement for r14:
+
+	(_Toc__Static_fk1 - .LCTOC1)(14)
+
+Now if the offset is too large (exceeds 16bit), then we have
+to build the offset some other way in a GPR, then add it to
+14, then indirect through the result.
+
+Sounds simple but it isn't.
+
+Loading both labels into GPRs using 64bit symbolic loading
+instruction sequences and then subtracting them doesn't work.
+The result is always "off" by more than a few thousand bytes.
+
+Using 64bit constant operators doesn't work:
+
+	ld 4, .LCTOC0@toc(2)
+	lis 4, (_Str1 - .LCTOC1)@highesta
+	ori 4, 4, (_Str1 - .LCTOC1)@highera
+	sldi 4,4,32
+	oris 4, 4, (_Str1 - .LCTOC1)@ha
+
+This seems to yield some sort of bullshit result. Always
+zero or something like that.
+
+Maybe this problem is unsolvable. It sure looks like it. PPC
+software sucks. What were these people thinking when they did
+it. Why does everybody follow suit and also implement this
+retarded nonsense TOC bullshit for their system. E.g., Linux.
+
+I'm so tired of this stuff.
+
+
+
+Jan 30 2009
+===========
+
+I've been fixing many AIX/PPC32 bugs. Linux/PPC64 support is
+still better in areas like floating point to integer conversion.
+But I'm tempted to stop this work now.
+
+Here are the current gcc test suite results:
+
+
+Next I'll
+
+	- Introduce a -sys flag to distinguish between AIX and
+Linux from the command line (rather than compile time)	
+
+	- Try again to fix the stupid TOC problems, this stuff
+should really better work
+
+	- Make a release
+
+
+
+Jan 19 2009
+===========
+
+Time flies.
+
+I'm just about "done" with Linux/PPC64 support, and it turns
+out that I have another TOC problem which prevents the regex
+file of GNU tar from assembling properly. However I'm probably
+too tired of this stuff to fix it.
+
+So I should roll out a new release.
+
+And take another look at bitfields prior to that (GROAN!!!!!!)
+
+I'm currently testing on AIX/PPC32, which is currently broken
+in many ways. I hope it will benefit from much of the Linux/
+PPC64 work I did though.
+
+
+Dec 25 2008
+===========
+
+I fixed the extern declaration linker errors and a few floating
+point conversions (but not all), and also implemented computed
+gotos. I'm now at 1542 passing test cases which was encouraging
+enough for me to try self-compilation. That failed with the
+following error:
+
+ld: /usr/lib64/crti.o(.init+0xc): automatic multiple TOCs not supported using your crt files; recompile with -mminimal-toc or upgrade gcc
+ld: final link failed: Bad value
+
+Apparently the generated code filled up the whole TOC (which is
+limited to 32kb), or something like that. So I thought I spent
+the past couple of weeks working on PPC for nothing because
+this showstopper bug renders all that working stuff useless
+anyway since bigger programs won't work.
+
+But then I started looking into gcc's -mminimal-toc option and
+decided I should really implement that, so I did. After 7 hours
+of uninterrupted coding (and with 2000 lines of diff since the
+day before yesterday), I have a version that works. Both with
+-mminimal-toc and -mfull-toc the gcc test suite has 1542 passed
+cases.
+
+Then self-compilation worked! (After explicitly linking with
+extlibnwcc.o - There are apparently some issues if extlibnwcc64.o
+is not available, nwcc probably doesn't want to use extlibnwcc.o
+because it may be 32bit. But with ./configure it would probably
+work as expected)
+
+However, only "int main() {}" runs and more complicated programs
+yield crashes which I still have to investigate.
+
+Once self-compilation works on Linux/PPC64, I'll go back to
+AIX/PPC32 and check what broke and also try the test suite. Then
+I'll make a new release.
+
+
+
+Dec 23 2008
+===========
+
+I've been slaving away at bitfields for PPC (and big endian
+systems in general) and it's so ridiculously hard to get to
+work that I've given up and moved on to other things. Now I'm
+working on the gcc test suite on PPC! Today I passed the mark
+of 1500 working test cases on Linux/PPC64:
+
+	Wed Dec 24 03:33:56 UTC 2008
+	1502 passed
+	95 failed at compile time
+	37 failed at runtime
+
+For comparison, the x86 numbers:
+
+	Tue Nov 25 01:13:35 CET 2008
+	1570 passed
+	52 failed at compile time
+	13 failed at runtime
+
+So it's not looking GREAT, but it seems doable to reach similar
+numbers. Some floating point conversions still aren't working,
+there are various stdarg problems, passing small structs to
+functions by value isn't even internally consistent, declared
+but not used extern variables still yield linker errors. When
+these things are fixed, I may try some larger programs (and
+self-compilation) and possibly make a release.
+
+If I do make a release, though, I should perhaps revert
+bitfields to a version that works. For example if I don't
+adhere to the big endian layout and just use all little endian
+bitfield location calculations, that may be internally
+consistent and yield structs of mostly appropriate size.
+
+
+
+Dec 06 2008
+===========
+
+I've been dealing with the fundamentals of correct bitfield
+storage layout for big endian systems and am finding it
+____HORRENDOUSLY____ difficult to wrap my mind around it. The
+problem is that my bitfield layout stuff was written on a little
+endian system, and little endian seems much more natural to
+handle it, but now I have to adapt it to big endian as well. On
+x86 with:
+
+	struct foo {
+		unsigned	x:3;
+		unsigned	y:3;
+		unsigned	z:3;
+	};
+
+... we just follow the natural order. x comes first, so it is
+processed first, and then the struct offsets are updated
+(incremented) accordingly. Just like with normal struct members!
+Then comes y, after which the offset is updated (incremented)
+again and we finally handle z.
+
+With the big endian PPC ABI, the bitfields are actually supposed
+to be arranged in a big endian order that corresponds to its
+source code order! I.e. x becomes the most significant bitfield
+in the storage unit which will hold x, y and z. This feels very
+unnatural and terrible for a few reasons.
+
+First it trashes the natural struct member order. Even on a big
+endian system, we always look at the current struct member, process
+it, increment the offset, and move on to the next member. However
+with bitfields we first have to combine the bitfields into a
+storage unit, and then post-process the offsets to make the first
+encountered bitfield the most significant bits of the storage unit.
+
+It also imposes some of this endianness nonsense on individual
+bytes! Of course byte values are immune to endianness, but with
+this big endian ABI, the first and thus most significant bitfields
+begin at the top of a byte! So if we have
+
+	struct foo {
+		unsigned	nonsense:1;
+	} f = { 1 };
+
+... then f will likely end up as a byte with value 0x80 because
+nonsense is shoved into the most significant bit.
+
+This stuff is ___EXTREMELY___ confusing for me to work with.
+
+
+Nov 26 2008
+===========
+
+Some very basic bitfield fixes for PPC. They can be written and
+read now. Sign-extension works.
+
+However there are still crashes with bitfield initializers, so
+they are probably not created with correct sizes.
+
+Next I'll have to do big-endian-like layout, which may make it
+work for SPARC as well.
+
+
+Nov 25 2008
+===========
+
+Some essential variadic function fixes. I'm now very determined
+to make all of this PPC stuff work, possibly even longstanding
+issues like passing structs by value to variadic functions. But
+probably not inline asm.
+
+I really need to fix bitfields for RISC now. Afterwards I'll give
+the gcc test suite a try. I'm also looking forward to porting
+nwcc to MacOS X on x86 and AMD64, though looking at some gcc
+output for that system I can tell it will probably take quite a
+bit of effort to support Mach-O object file format peculiarites.
+And it seems all code is position-independent by default - like
+on AIX/PPC and Linux/PPC. And there are a few ABI differences.
+
+
+Nov 24 2008
+===========
+
+More debugging. I've almost completely implemented the long
+double emulation atop double. The only thing missing (that I
+can see) is increment/decrement operators:
+
+	long double foo = 0.0L;
+	++foo;
+
+Not a big deal, I'll fix this later.
+
+Another thing I noticed is that variadic functions don't
+appear to work at all. This may be another difference between
+the AIX and Linux ABIs because I assume this would have been
+noticed.
+
+So here's my current remaining TODO for PPC:
+
+	- Fix variadic functions (especially for long double)
+
+	- Fix fundamental bitfields (there are some crashes
+in the test suite)
+
+	- Fix bitfield storage layout
+
+	- Avoid using large branch target kludge when possible
+(the horrible workaround for branch target offsets which are
+too large to be encoded is always used - instead it should
+only be used if there are more than an approximate number of
+icode instructions between source and target location)
+
+I think some things are already looking pretty good.
+
+
+Nov 23 2008
+===========
+
+Still writing Linux/PPC64 support. I've started implementing
+128bit long double, which wasn't needed on AIX (because it
+makes long double 64bit as well). When performing arithmetic
+operations, I just do it in double precision for now. There
+are simple conversion routines which convert long double
+values to and from double before and after doing arithmetic.
+This should suffice for now (but doesn't work correctly for
+all cases yet).
+
+Next I should finally fix the big endian bitfield storage
+layout. Once I got working long double and bitfield support,
+I'll try the gcc test suite to get some numbers to get an
+idea of the PPC status.
+
+
+Nov 09 2008
+===========
+
+Still writing Linux/PPC64 support. It's disappointing to find
+lots of quite basic bugs in nwcc's support for this platform.
+But I've already fixed some of the most important ones, so
+there may be hope it will soon be usable.
+
+I'm looking forward to trying the gcc test suite on Linux/PPC,
+which will be quite interesting to compare with x86/AMD64.
+
+Next I'll need to fix bitfield storage layout for PPC and the
+other RISC archs. After that it may already be time for a new
+release.
+
+BTW, I'll take back what I said about struct-by-value passing
+being almost sane on Linux/PPC64, it is still completely
+nonsensical.
+
+
+Nov 04 2008
+===========
+
+Still writing Linux/PPC64 support. I'm jumping back and forth
+between euphoria and frustration. I just hope that my bugfixes
+for Linux won't break too many things on AIX, but I guess that
+will be unavoidable. So I'll get Linux/PPC64 support into shape,
+fix the long-standing PPC issues which have been haunting me
+for much too long, and then I'll go back to AIX and roll back 
+incorrect ABI changes.
+
+Some open issues:
+
+	- Linux requires 128bit long double, so I'll have to
+give in and write some software floating point support
+
+	- Aggregates passed by value are mapped to argument
+double-word slots, regardless of their contents. This sounds
+almost SANE and may be different from AIX
+
+	- Big offsets don't work 
+
+	- Bitfield support hasn't been ported yet
+
+	- Probably lots of other ABI issues....
+
+
+Oct 17 2008
+===========
+
+I've started writing Linux/PPC64 support the day before
+yesterday. Basic programs already work, but there are still
+LOTS of issues. However, it's difficult to distinguish between
+Linux-related bugs and general PPC bugs. For one thing, I
+discovered that my constant sub-expression evaluation code
+apparently broke PPC support completely when I released 0.7.6!
+
+Whoops! Good thing I explicitly mark untested architecutres as
+such for every release.
+
+There are many similarities between Linux and AIX asm on PPC64
+(TOC pointer register, TOC section declarations, most GPR 
+meanings) but considering that I've already changed more than
+a few things and still have to do a lot of stuff, I guess the
+port will not be as simple as one might expect. I'm NOT
+looking forward to implementing System V stdarg either!
+
+Another thing which will need fixing is that I'm using "#if
+_AIX ... #else ... #endif" sections to separate differences.
+I'll have to introduce new ABI flags - or probably better yet
+a -sys flag instead.
+
+
+Oct 14 2008
+===========
+
+I think I have most bitfield stuff working on x86 and AMD64
+now. Interestingly the port from x86 to AMD64 only took 10 or
+so minutes and about 20 lines of code changes. (GNU C bitfields
+which are larger than int/uint still don't work right, and I'm
+not interested in fixing them for now).
+
+Sadly Solaris/SPARC seems to do a lot of things the other way
+around. E.g. in
+
+	struct foo { unsigned b:1; };
+
+... it stores b in the most significant bit of the first byte,
+unlike x86/AMD64 where it's stored in the least significant one.
+I cannot imagine what it does to bitfields across multiple bytes
+and storage units, but I hope it will be doable somehow.
+
+(I still cannot use putchar() in Solaris test cases because it
+uses bitfields in stdin as well...)
+
+
+Oct 12 2008
+===========
+
+Well, I'm debugging bitfields and it goes on and on and on and
+...
+
+This stupid garbage language feature, which is described in just
+a few sentences in the C standards, requires ridiculous piles
+of complexity to implement correctly (as in, with proper ABI
+compatibility).
+
+I have 20 testcases just for bitfield initializers in the test
+suite now. The already huge initializer reading core function,
+which is around 1000 lines, has gotten another 100 lines just
+for this bitfield nonsense. And then there is a lot of other
+stuff to merge and extract, encode and decode bitfields. Right
+now I'm struggling with variable bitfield initializers such
+as
+
+	struct foo { int x:8; } f = { rand(); };
+
+This so completely messes up initializer handling! Now we have
+to have an initializer for the bitfield storage unit, which
+must be merged from its components. Then we need an ADDITIONAL
+initializer to compute and assign the result at runtime. The
+data structures are getting uglier.
+
+OK, when that's complete I'll have to port all of my changes to
+nasm. And then I have to port it to all other architectures and
+assemblers, which may have vastly different ABI requirements.
+
+A ``diff'' between the current version and 0.7.6 is already more
+than 2000 lines of code, just for bitfields. When I'm done with
+this perhaps it will be 2500.
+
+Bitfields are absurdly ridiculous and worthless nonsense stuff.
+
+
+Oct 08 2008
+===========
+
+I've been debugging bitfields, it's taking forever.
+
+Now the basics seem to work and I'm doing bitfield initializers,
+which apparently still contain lots of bugs. Some things which
+must still be checked or implemented:
+
+	- Initializers for non-BF members at start and end of
+	  struct
+	- Initializers for mixed BF/non-BF members and multiple
+	  storage units 
+	- Implicit zero-initialization of BF members for which
+	  there is no explicit initializer in an initializer
+	  list
+	- Initializers for unnamed BF members
+	- Initialization in the presence of storage unit
+	  termination using "unsigned :0;"
+
+... and of course all of this stuff must be tested using arrays
+of such structs as well to expose padding and alignment issues.
+
+When I got these things working, I have to port my
+print_init_list() changes from the gas emitter to all others as
+well (starting with nasm of course). Then I have to do non-
+constant bitfield initializers;
+
+	struct foo { int bf:16; } = { rand(); }
+
+Then I have to try and adjust/fix all of this stuff on AMD64,
+SPARC, MIPS, PPC. This really is taking forever for such a
+pointless nonsense feature.
+
+On a side note, I was quite surprised to find that I hadn't
+released my latest preprocessor optimizations! These have been
+lying around here for 5 or 6 (or even more?) months but I just 
+forgot about them. The primary difference is that it now uses 
+mmap() instead of stdio for reading include files. This saved
+25% processing time on average, or something like that.
+
+I should work on nwcpp again to make it usable!
+
+
+Sep 24 2008
+===========
+
+Wow, it has taken me a month just to upload the first snapshot
+since 0.7.6!
+
+I've been fixing bitfield support. The implementation in 0.7.6
+"works", but it does not have the expected storage layout, in
+that every single bitfield member is turned into a whole "int"
+(or larger) instead of packing multiple small bitfields into a
+larger storage unit and masking, shifting and ORing to encode
+and decode bitfield values.
+
+This isn't fun at all, and it's taking much longer than I had
+hoped. The basics of arranging, reading and writing bitfields
+in the new way seem to work on x86. However, even on x86 there
+are apparently still some layout differences in comparison
+with gcc (see bf_signext0.c testcase).
+
+Bitfield initializers have not been adapted to the new way
+_____AT ALL______ so they're currently completely broken, so
+we have a genuinely unstable snapshot this time! (But just as
+far as bitfields are concerned).
+
+There may also be remaining bugs with compound assignment
+operators used in conjunction with bitfields.
+
+Terminating storage units with "int :0;" is not implemented
+yet.
+
+And this stuff will probably break down like a card house when
+it's moved to SPARC, which is the primary reason the redesign
+is required (because the Solaris stdio.h FILE definition uses
+bitfields and expects compatible storage layout).
+
+There are some other bugfixes as well which justify this
+snapshot; AMD64 bugs reported by Anders Gavare (gxemul works
+with nwcc on AMD64 now!), a bug reported by Harald van Dijk
+(&"string"), and other things.
+
+
+Aug 2008
+========
+
+After six months of nwcc development (with some interruptions
+while working on other projects), I'm pleased to release version
+0.7.6!
+
+Like version 0.7.4, this is another great step forward as far as
+code correctness is concerned. However, due to the amount of
+work that went into even x86 and AMD64 debugging, I still haven't
+managed to improve MIPS and PPC support. Nor has SPARC received
+much attention.
+
+There are so many bugfixes that it is completely pointless to
+begin enumerating them. A "diff" between version 0.7.4 and 0.7.5
+yields 17,000 lines of output!
+
+I have started working with an adapted version of the gcc test
+suite. Basically I took the original C files, threw them together
+with my nwcc test suite script, and removed all of the test cases
+that use unsupported and undesired GNU C/C99 features or that
+are buggy (as in using uninitialied pointers and such) and just
+happen to work with gcc.
+
+Here's a list of some things that are still missing and won't be
+supported any time soon, or indeed ever (as is the case with
+nested function defintions):
+
+	- Empty structs and arrays
+		- definitions
+		- initializers
+		- alignment and allocation rules, etc
+	- Advanced VLAs
+		- VLA struct members
+		- VLA function parameters
+		- VLA typedefs
+		- Multi-dimensional VLAs
+	- Local labels (__label__)
+	- Liberal cast-less conversion between pointers and integers
+	- Nested function definitions
+	- Most builtins (strcpy(), prefetch(), all maths stuff,
+	  setjmp() [could be a problem], etc)
+	- Most attributes (vector, etc)
+	- Optimization things (assuming fabs() will be inlined in
+	  some cases, the absence of which will cause linker errors
+	  when not linking with -lm)
+	- Redefinition of inline functions
+	- Complex and imaginary numbers
+	- Genuine wide character support
+	- Anonymous structs (as in the GNU extension)
+	- Union/struct casts
+	- Enum forward declarations
+	- gcc peculiarities such as enum types being unsigned by
+	  default, order of function argument evaluation, etc
+
+
+And a list of some genuine bugs and sadly missing things which
+may be addressed soon:
+
+	BIG:
+
+	- The preprocessor is a death trap, and probably much less
+	  usable than the compiler
+	- There is no test suite for cross-compilation, so it's
+	  probably full of bugs
+	- nasm/yasm support is much worse than gas support now,
+	  which is a result of the default assembler change (the
+	  default assembler - now gas - always gets the most
+	  testing and debugging)
+	- The separation between GNU C, C90, C99 is quite incomplete 
+
+	SMALL(ish):
+
+	- Flexible array member initializers
+	- Bitfields
+	- Missing bitfield diagnostics for too large initializers
+	- Correct bitfield storage layout. Showstopper on Solaris!
+	- Possibly other bitfield bugs
+	- GNU rules for bitfield types larger than int/uint
+	- Putting __attribute__s randomly anywhere in a declaration
+	- Nested designated initializers
+	- Static compound literals in constant expressions
+	- Various other address arithmetic constructs in constant
+	  expressions
+	- _Bool in constant expressions
+	- Various typedef clashes [eg. typedef vs. label]
+	- Designated initializers mixed with anonymous unions
+	- Function definitions without parameter list are not
+	  callable with arguments [this had been fixed long ago but
+	  seems to not work anymore]
+	- attribute aligned for "unpleasant" requests, such as
+	  at the beginning of data/bss segments
+	- K&R function parameter/argument semantics are not 100%
+	  accurate
+	- __builtin_constant_p() and __builtin_compatible_types()
+	  seem to be commonly used, but still aren't supported
+
+In general, nwcc now "usually" has a good reason to reject a
+particular code construct on the best supported architectures,
+though there are still nasty unexpected bugs.
+
+Here are the numbers for the (adapted) gcc test suite:
+
+AMD64:
+	1566 passed
+	57 failed at compile time
+	10 failed at runtime
+
+x86:
+	1572 passed
+	52 failed at compile time
+	11 failed at runtime
+
+(Note that gcc errors are not counted, so that's why the number of
+actually evaluated test files differs between the various 
+architectures and gcc versions.)
+

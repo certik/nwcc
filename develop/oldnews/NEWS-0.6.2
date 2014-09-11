@@ -1,0 +1,211 @@
+Jul 9
+=====
+
+I wrote some more PPC stuff - now 53 of 68 test files pass. The vast
+majority of those that fail use features that I always implement last
+when doing a new port: Floating point, struct/union arguments and
+return values, and variadic functions. Other than that, I think only
+the function pointer test fails. Even ``long long'' works - I found
+it very impressive how most multi-register ``long long'' stuff is
+so easy to adapt to new platforms.
+
+But I know that the test suite doesn't really mean a whole lot for
+correctness. In particular, argument passing on the stack definitely
+doesn't work yet, but there are no files in the test suite that report
+this (yes I should write one.)
+
+
+Jul 8
+=====
+
+I made a lot of PowerPC progress, particularly today and yesterday. Now
+44 of 68 test files pass on PPC, and even some tricky stuff like 64bit
+``long long'' (I'm writing for 32bit hardware right now) is already
+partially working.
+
+I was disgusted to find out that PowerPC doesn't even provide hardware
+division, though it later turned out that Alpha and ARM and possibly
+others don't do that either. Anyway, I adapted the software ``long
+long'' implementation that I use on x86 for this purpose. That works
+great, but is extremely slow because the code is endian-specific and I
+just threw in a lot of big<->little reversals to make it work. And my
+algorithms for this stuff are generally quite simplistic.
+
+To be honest, there's a lot of ``black magic'' in the PPC code I have
+right now, because I know very little about AIX dynamic linking and just
+always copy gcc's ways of doing things when I'm not sure how it works.
+
+Despite of all of these difficulties that I'm forced to deal with,
+progress is unlikely to stop. So I'm looking forward to releasing nwcc
+0.6.3 some time next week.
+
+
+Jul 2
+=====
+
+This was a lazy weekend. Today I made some more PowerPC progress, but
+not much. Now 6 of 68 test files pass.
+
+
+June 28
+=======
+
+I wrote a lot of PowerPC stuff on the past couple of days, and today I
+finally got around to actually testing it. As I expected, it didn't work
+at all, but not so much because the generated instructions were wrong
+(they weren't!), but because of the terribly dynamic linking stuff I
+have to put up with when writing AIX assembly.
+
+
+June 24
+=======
+
+Well, I couldn't resist and did some more AMD64 work; I added support
+for AMD64 inline assembly (this is even more incomplete than x86 inline
+asm, but seems sufficient for some basic stuff) and passing structs and
+long double to variadic functions. Now all tests pass, and infinite
+self-compilation works correctly. The final showstopper I can see is
+that structs/unions are still not passed in registers, such that code
+that does this isn't link compatible with gcc.
+
+I also booted my RS/6000 to take a first brief look at PowerPC assembly
+and to get nwcc to compile on AIX. So a PowerPC backend is probably
+what I'll be doing on the next couple of days and weeks.
+
+
+June 23
+=======
+
+I admit I'm lazy about development and also about uploading changes
+these days. However, today I finally got an nwcc-compiled nwcc on
+AMD64 to pass the floating.c test. It turned out that floating point
+arguments were unimplemented for variadic functions on AMD64, and
+because that stdarg stuff on AMD64 sucks so much, this is mainly the
+reason why I haven't been very motivated to do nwcc development lately.
+
+Now that this works, though, I feel I should leave the AMD64 stuff
+alone for now. Inline asm, structs passed to variadic functions and
+100% ABI compatibility are still missing, but those aren't very high
+on my wish list right now. Actually, now that I mention it, I remember
+that I need AMD64 inline asm support for FreeBSD/AMD64, so I'll
+probably do it rather soon anyway. That's because nwcc mostly works
+on FreeBSD/AMD64 now (thanks to Anders Gavare [www.gavare.se] for
+providing FreeBSD/AMD64 access!)
+
+I intend to get some stuff done this weekend, I'm just not sure
+exactly what yet. Perhaps even more AMD64 refinements (yawn), finally
+getting the MIPS backend on par with x86/AMD64, C99 features, or even
+a new PowerPC backend ... And maybe a bit of plain old bug fixing too.
+
+
+June 16
+=======
+
+C99 isn't very popular or even commonly available. People still use
+C89 or just GNU C most of the time. It has been said that C++'s
+adoption of C99 features may ironically become the most important
+opportunity for C99 to become widely accepted, and that may well be
+true. I've been mostly ignoring C99 with nwcc as well, but because
+I'm going to write a C++ compiler some time soon, I'm now also
+interested in getting most C99 features to work, just in case a
+future C++ standard adopts C99 language features. I have to admit
+I'm not very up-to-date on this one at all, but last I heard, the
+C++ standard working group has decided to adopt all C99 library
+functions, but no decisions on language-builtin stuff have been
+made yet.
+
+I already have support for inline/restrict, __func__, flexible array
+members and probably a few others that I cannot remember now. Today
+I wrote support for _Bool and tomorrow I'm going to target variable
+length arrays. Afterwards I'll probably do designated initializers
+and compound literals.
+
+
+June 6
+======
+
+The AMD64 floating point stuff works now, to the extent that all FP-
+related test files pass. It's also possible to self-recompile nwcc
+infinitely on Linux/AMD64; This is something that STILL doesn't work
+on FreeBSD|OpenBSD/x86 (something related to ``long long'')
+
+Anyway, it's looking great now, but not perfect; The self-compiled nwcc
+generates bad code for floating.c so there are apparently still bugs.
+Also, inline assembly and structs passed to variadic functions still
+don't work. Finally, structs/unions passed by value are still ABI
+incompatible, which is clearly undesirable. However, I believe the ABI
+issues aren't that severe.
+
+So I'll look into fixing the first two problems and may then start
+doing an AIX/PowerPC (initially 32bit-only) port. I'm presently
+obsessed with supporting as many architectures as possible (I also need
+PA-RISC and SPARC and maybe ARM and Itanium) because I'll probably
+start writing a C++ compiler when most backends are done - Those will
+then be shared between the C and C++ compilers.
+
+Optimization also weighs in somewhere, I guess, but I'm not sure where
+and to which extent. Only time will tell. For now, however, it's clear
+that I need support for all of these architectures first ;-)
+
+
+June 3/4
+========
+
+I've been laying a lot of AMD64 SSE floating point groundwork. Now it is
+possible to pass floating point values to functions, to convert between them,
+and to perform arithmetic operations on them. In fact, the floating.c test
+passes now. However, conversion to and from integers is incomplete. It does
+not appear to be possible to convert 64bit integers to floating point values
+using SSE, so I'll probably have to use x87 for this. *groan*
+
+I have also noticed that sizeof(long double) returns 12 on x86 as well, even
+though it actually only has 10 value bytes. I am however keeping sizeof(long
+double) = 10 on x86 for now, because even though 12 works great on amd64, it
+breaks self-compilation on x86. I do not understand at all why this is
+happening yet.
+
+
+May 31
+======
+
+I spent the past few weeks writing an AMD64 backend for nwcc (many thanks to
+Robert Oestling [www.robos.org] for providing AMD64 access!) This backend has
+finally reached a state where it appears to be more or less usable. In
+particular, nwcc on AMD64 can now compile itself, and the resulting binaries
+can compile nwcc again.
+
+However, some features are still missing; Most notably floating point, inline
+assembly and structures passed by value to variadic functions. The additions
+have only been tested on Debian testing/unstable and definitely won't fully
+work on BSD because I haven't added proper linking flags for it yet. But it
+may be possible to use nwcc on FreeBSD/AMD64 for plain compiling and
+assembling, and gcc for linking;
+
+	nwcc foo.c -c
+	gcc foo.o -o prog
+
+(I'll test this and add full FreeBSD support some time soon)
+
+Also, this backend only supports the YASM Modular Assembler right now, and
+I'd like to have support for gas as well. That brings me to the next addition
+in this release:
+
+gas on x86 is now supported as well! nwcc/gas is MUCH faster than nwcc/nasm,
+but may possibly be a bit less stable. There are two ways to choose the
+assembler you want nwcc to use;
+
+  - Compile with the -asm command line option;
+
+      nwcc foo.c -asm=nasm  <-- Output nasm code, assemble with nasm (default)
+      nwcc foo.c -asm=gas   <-- Output gas code, assemble with gas
+      nwcc foo.c -asm=yasm  <-- Output nasm code, assemble with yasm
+
+  - Set the ASM environment variable before compiling
+
+      export ASM=gas        (use ``setenv ASM gas'' for (t)csh!)    
+      nwcc foo.c            <-- Output gas code, assemble with gas
+
+(As usual, I will upload the next AMD64 additions (floating point, FreeBSD
+support, etc) and fixes to Sourceforge, so look for nwcc_unstable.tar.gz in
+a week or two if you are interested in AMD64 progress.)
+

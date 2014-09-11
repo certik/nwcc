@@ -1,0 +1,52 @@
+April 11 2007
+=============
+
+After a three months break from doing nwcc development (I
+have been writing an x86 assembler instead), I've finally
+done some new nwcc stuff today:
+
+	- I merged the SPARC/Linux support that has been
+lying around here for some time. Note that this stuff is
+fairly broken in some areas because the Linux ABI seems to
+differ from the Solaris ABI, and I haven't gotten around
+to fixing that yet
+
+	- I ported to OpenBSD/AMD64. Like Linux/SPARC,
+that just involved the usual linker/assembler flags
+selection stuff. ABI seems to be compatible with Linux/
+FreeBSD on AMD64
+
+Next I'll add support for my new assembler to the NWCC_ASM
+environment variable and -asm flag, and release that stuff
+as 0.7.1.1 minor nwcc release.
+
+I hope that once my assembler is good enough for use with
+nwcc, I can get back to doing some major nwcc development.
+The best way to get into it would probably be a PA-RISC/
+HP-UX port ;-)
+
+
+Jan 13 2007
+===========
+
+nwcc 0.7.1 is out! This release adds support for the SPARC
+architecture. Currently only Solaris on 64bit hardware is
+supported. Naturally many bugs are to be expected, and a few
+are already known, though the new backend already seems
+surprisingly stable to me.
+
+I'm very grateful to Andre van Ruth [www.gnulinux.nl] for
+providing access to the SPARC system on which I wrote and
+debugged all the new stuff.
+
+Because I developed most of the additions using 32bit nwcc
+binaries to generate 64bit SPARC code, I ran into some very
+severe cross-compilation bugs, which I fixed (in fact this
+was the first time I really made use of the cross-comp
+support.)
+
+As usual, the port also showed me a few bugs that went
+undetected in other backends; I've fixed some of those for
+MIPS and PowerPC, though others remain subject to open
+questons.
+

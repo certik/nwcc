@@ -1,0 +1,555 @@
+July 03 2009
+============
+
+Apache links now (there were crt starup module link
+order issues).
+
+But it crashes at runtime in an error logging path
+and it is ____IMPOSSIBLY HARD____ to track this down.
+
+I already spent 4 hours only to find out that:
+
+
+411 static int translate_alias_redir(request_rec *r)
+412 {
+419     ap_conf_vector_t *sconf = r->server->module_config;
+
+... r->server is garbage for some reason. In
+modules/mappers/mod_alias.c.
+
+I have no idea who calls this function and when. I
+have no idea who creates the "r" data structure and
+when and where.
+
+It is impossible to track down execution flow because
+Apache is full of "hooks" obfuscation and really nasty
+macro hackery. Apache uses every GNU bfd obfuscation
+trick in the book, and then some. Hooks are put into
+dynamically managed tables of function pointers. There
+are MANY huge #defines to automate hook installer
+function generation and other things like that.
+
+I often have to resort to running "nm" on archive
+library files to find which module contains the
+function I'm looking for.
+
+It's a terrible mess and I'm officially giving up now.
+This stuff sucks. Nothing is transparent. This is by
+far the worst software project I've tried to debug so
+far. grep never works.
+
+The httpd binary is not debuggable because gdb cannot
+read it. To find that translate_alias_redir() is
+called last, I added a change to nwcc which can
+instrument code with tracing output:
+
+	ubuntu:~/nwcc_ng> cat x.c
+	void nonsense() {}
+
+	int
+	main() {
+	        nonsense();
+	}
+
+	linux:~/nwcc_ng> ./nwcc x.c -stupidtrace
+	/var/tmp/cpp72.cpp - 0 error(s), 0 warning(s)
+	linux:~/nwcc_ng> ./a.out
+	linux:~/nwcc_ng> setenv NWCC_STUPIDTRACE
+	linux:~/nwcc_ng> ./a.out
+	main
+	nonsense
+	linux:~/nwcc_ng>   
+
+
+In other words, functions compiled with -stupidtrace
+print their name upon entrance (but only if the
+NWCC_STUPIDTRACE environment variable is set).
+
+It's called "stupid" because it's really simple. It
+also only works with x86/gas with BSD/Linux for now.
+
+
+June 20 2009
+============
+
+I had another gcc runtime bug in compound literals,
+and with that fixed, gcc-core 4.2 builds correctly.
+That is, nwcc builds a bootstrap xgcc compiler
+which can then successfully compile a second stage
+bootstrap compiler (?!) that can build the rest.
+
+So this is fine for correctness, but I noticed that
+the nwcc-compiled bootstrap binary runs REALLY
+slow. As in, most bigger files with >2000 lines of
+code take about 30 seconds to compile on my newish
+x86 PC. nwcc-generated code is generally slower
+than gcc, but not by an order of magnitude! So my
+suspicion is that gcc may use a lot of "long long"
+arithmetic e.g. when evaluating constant
+expressions, and this is expected to be painfully
+slow with libnwcc which only has a quickly kludged
+up proof of concept implementation.
+
+But I'm not going to fix this for now, so I'll
+mark gcc compilation as "done" and will continue
+with Apache and MySQL next (these fully compile
+but still yield linker errors).
+
+BTW, with the recent bugfixes for gcc, GNU sed also
+runs much better (51 of the 52 test suite files
+pass).
+
+
+June 15 2009
+============
+
+Fixed that gcc bug, and another gcc bug relating to
+bitfields, and now I'm investigating another gcc bug
+relating to struct-by-value assignment:
+
+927           top[-1].value
+928             = num_equality_op (pfile, top[-1].value, top->value, top->op);
+
+Some of these arguments are structs, and num_equality_op()
+also returns a struct.
+
+Looks like passing the arguments by calling memcpy()
+trashes a register that is used to compute the target
+struct address just prior to calling the function :-(
+
+These past couple of gcc bugs have been surprisingly
+easy to hunt down. For the first bug I even had to
+compile gcc with gcc to find the wrong code path that
+was executed by an nwcc-compiled gcc.
+
+I expect a lot more bugs before gcc fully builds with
+nwcc, but there's some hope they won't all be hard to
+find.
+
+
+June 06 2009
+============
+
+I've been slacking off a lot.
+
+My current task is debugging gcc compilation (nwcc can
+build the bootstrap compiler xgcc, but xgcc crashes when
+it is used to compile any files).
+
+Within 3 or 4 hours total I've nailed it down to this
+statement in libcpp/line-map.c:
+
+	if (((map - 1)->included_from < 0))
+
+Apparently in this particular context, in the function
+where it is used, the expression yields 0 even though
+the value of included_from really is -1.
+
+And if I do
+
+	printf("%d\n", ((map - 1)->included_from < 0));
+
+... just before the if statement, then that yields 1.
+The bug goes away if I isolate the construct into a
+test case without the original surrounding functions,
+so it may be a register allocation problem.
+
+
+May 31 2009
+===========
+
+Not much progress.
+
+However, I fixed two Perl bugs (PIC and constant sub-
+expression evaluation), and now the build process
+successfully creates a miniperl binary, which however
+crashes.
+
+That means there are still very basic code generation
+bugs for Perl, gcc and GNU sed which make those apps
+completely unusable. PHP is a bit better because even
+though the test suite yields some errors, much of it
+runs.
+
+I'll try debugging GNU sed tomorrow. Code correctness
+is of utmost importance.
+
+
+May 26 2009
+===========
+
+I've started extending my test suite of automated builds
+for various open-source apps, and I've also started
+using pkgsrc with nwcc. The latter gave me a few new
+ideas for tests.
+
+It is clear to me that nwcc needs MUCH more testing and
+open-source exposure. The plan is to throw hundreds of
+open-source apps at it and debug for them all until nwcc
+is FINALLY very solid, proven and reliable. This will
+take a few months. Then I can FINALLY pay attention to
+code quality, performance, portability (again), etc.
+
+But without a really solid base it just makes no sense.
+I sometimes try to compile stuff with tinycc as well,
+and it seems to be even much worse than nwcc, in that
+most medium-sized and big programs fail. Actually,
+almost all of them.
+
+Some observations from today:
+
+	- PHP builds, and the test suite runs fairly well
+now (though there are still some FAILs)
+
+	- gcc's bootstrap compiler xgcc builds, but only
+in non-GNU mode, and it crahes immediately with an
+internal compiler error when building the the rest of
+gcc. I'd like to debug this some time soon
+
+	- Apache and MySQL still give linker errors
+
+	- Perl fails with a parser error (this is most
+likely a bug, which I haven't investigated further yet)
+
+	- Tcl exposes a PIC bug (nwcc runs out of
+registers on x86 since ebx is used as PIC pointer)
+
+	- Many programs want __builtin_constant_p in
+GNU mode, maybe I should implement that
+
+	- Many packages end up invoking nwcc with -R and
+-rpath options, when presumably they really meant
+-Wl,-R and -Wl,-rpath. This appears to be caused by
+libtool. Since gcc does not recognize these options,
+I've taken the easy way out and interpret them as -Wl,...
+instead
+	- GNU sed has compiled successfully for a long
+time, but the resulting executable is still VERY
+incorrect. Maybe because it makes heavy use of bitfields.
+This is high priority
+
+	- mutt, sylpheed, nano, fetchmail appear to work
+(as do a few dozen of others that I tried earlier, which
+I'm not going to list here)
+
+	- Many emacs files compile, but the build process
+is VERY messed up and ends up referencing lots of
+libraries and CRT startup object files (!) that don't
+exist. This may be caused by nwcc bugs that happen during
+./configure
+
+	- valgrind is unconditionally gcc-specific and
+uses empty structs, which aren't supported (and won't be
+any time soon)
+
+I will have to make a huge table of tested applications
+with their status on x86 and AMD64, and later extend it
+for other platforms.
+
+
+May 25 2009
+===========
+
+Some more preprocessor stuff, and it's not fun at all
+anymore.
+
+So I took a break and made gcc compile with nwcc. Sadly
+the resulting "minimal" gcc binary created during the
+build process (which compiles the rest of gcc) crashes
+immediately:
+
+/home/nils/testpack/gcc-4.2.0/host-i686-pc-linux-gnu/gcc/xgcc -B/home/nils/testpack/gcc-4.2.0/host-i686-pc-linux-gnu/gcc/ -B/usr/local/i686-pc-linux-gnu/bin/ -B/usr/local/i686-pc-linux-gnu/lib/ -isystem /usr/local/i686-pc-linux-gnu/include -isystem /usr/local/i686-pc-linux-gnu/sys-include -O2 -O2 -O2  -DIN_GCC    -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include  -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../libdecnumber  -g0 -finhibit-size-directive -fno-inline-functions -fno-exceptions -fno-zero-initialized-in-bss -fno-toplevel-reorder  -fno-omit-frame-pointer \
+          -c ../.././gcc/crtstuff.c -DCRT_BEGIN \
+          -o crtbegin.o
+In file included from ./tconfig.h:33551551,
+                 from ../.././gcc/crtstuff.c:33553025:
+../.././gcc/../include/ansidecl.h:1: internal compiler error: Segmentation fault
+
+However, this is still encouraging because I've never
+gotten this far. I had to enable the -notgnu option in
+the nwcc config file
+
+	(echo options = notgnu > ~/.nwcc/nwcc.conf)
+
+to get this to work because in GNU mode gcc uses far
+too many unsupported GNU features!
+
+So I'm thinking about making -notgnu the default on all
+platforms because that will get programs like gcc to
+work. However, then glibc will do nasty things like
+#define __attribute__. But maybe that's not a problem
+because nwcc itself doesn't implement too many
+attributes either!
+
+It is a difficult decision. In any case, I need to raise
+awareness about this topic. Maybe there should be a
+quick usage intro that explains it, and which is
+referenced by the build process.
+
+
+May 22 2009
+===========
+
+I've been fixing some preprocessor stuff. It is fun in a
+way to do something else again.
+
+However, what ISN'T fun is backporting nwcc changes to
+nwcpp! I only did this for the lexical analyzer and type
+mappings (mainly token.c and typemap.c), and it was
+already very horrible.
+
+First of all, many interfaces and some data structures
+varied because they were changed in nwcpp. The
+backported code also referenced many functions from
+other files which are not needed in the preprocessor (C
+declarations, backend, icode, etc). So getting it to
+compile took a loooong time (a few hours for a rather
+small amount of code). Then it segfaulted immediately.
+Then it didn't output the right things. Then it crashed
+a few more times.
+
+So I reintroduced lots of preprocessor-specific changes
+that I had removed by backporting the newer nwcc stuff.
+And now it sort of seems to work, but one test suite
+case still fails, and I haven't tried bigger programs,
+and I haven't even started backporting expr.c and
+evalexpr.c - which should probably really better be
+done because otherwise I'll have to re-debug some things
+that I fixed for nwcc.
+
+
+May 19 2009
+===========
+
+I added -gnu and -notgnu options.
+
+-gnu causes nwcc to define __GNUC__, -notgnu causes it
+not to. The default on Linux/BSD is -gnu (because some
+defective system headers need it), and the default on
+others (including Mac OS X) is -notgnu. It is also
+possible to set a different default choice by using
+
+	./configure --notgnu   # or --gnu
+
+-gnu should probably also take an optional version
+argument, and the default version setting may have to be
+refined.
+
+Someone mentioned a Perl script called "colorgcc" to me,
+which colors gcc warning and error messages. This is an
+idea I've had for nwcc for some time, so I just went and
+wrote a proof of concept kludge. Warnings are printed
+blue, errors red. This stuff should distinguish between
+mandatory (e.g. invalid pointer assignment) and voluntary
+warnings (e.g. implicit "int" functions in C89). However,
+I don't really feel like going through those 100 or so
+warning messages and makign the distinction (and also
+distinguishing between C89 and C99). So I'll do it later
+(it also uses hardcoded ANSI terminal sequences for now
+and doesn't look too nice - maybe I should color all
+parts of the message the same).
+
+The -colors option enables coloring of warning/error
+messages. Like the GNU C setting, it can also be enabled
+by default using configure
+
+	./configure --color
+
+In that case it can be DISABLED using -uncolor.
+
+I've also picked up nwcpp again. Now it understands the
+-sys and -std flags as well, and defines more macros than
+before. There are still LOTS missing though.
+
+I'll soon run all of the test suites and lots of test
+applications through nwcc/nwcpp, which I know currently
+already fails for some cases in the primary test suite
+(haven't investigated those yet though).
+
+
+May 18 2009
+===========
+
+It turns out that even glibc commits the cardinal sin of
+#defining __attribute__ for non-GNU compilers!
+
+	#include <stdio.h>
+
+	int
+	main() {
+		char	x __attribute__((aligned);
+		printf("%d\n", (int)__alignof x);
+	}
+
+On a current Linux/glibc system, a construct like this has
+three possible outcomes:
+
+	- If you compile the above program with "gcc x.c"
+or "gcc -ansi x.c", the resulting executable will print 16
+on x86
+
+	- If you compile it with "gcc -U__GNUC__ x.c"
+instead, then it will print 1 because a glibc header chooses
+to #define __attribute__ to expand to nothing if the __GNUC__
+macro isn't defined
+
+	- If you remove the #include, then it will always
+print 16 because there's noone to introduce the nonsensical
+__attribute__ definition
+
+
+May 13 2009
+===========
+
+I've been mostly working on my shell library for the past two
+months, but it's still not ready. So I've been slacking off for
+a few weeks and have finally decided to return to nwcc to be
+productive again.
+
+Now that I've debugged a few general parser errors and other
+basic language bugs (``links'' compiles now), I'm dedicating
+some time to standards.
+
+Here are some notes on this topic:
+
+------------------------------------------------------------
+Traditionally nwcc does not distinguish between C89, C99 and GNU C.
+Instead it allows every feature it knows, but warns about many language
+constructs that are not allowed in C89 and are not really worth using
+at the cost of making your code C99- or GNU-C-specific. Additionally,
+it does not honor identifier namespace rules by not requesting ISO-C-
+only declarations from the system headers if you compile with the
+-ansi or -std=c89 options.
+
+For a start, nwcc will begin honoring the gcc options to select the
+desired industry standard:
+
+	-std=c89
+	-ansi
+		Request strict C89; System headers shall not declare
+		items that are not available in ISO C90
+
+	-std=c99
+		Request strict C99; System headers shall not declare
+		items that are not available in ISO C99
+	
+	-std=gnu89
+		Request GNU C with ISO C90 rules. System headers can
+		define whatever they please
+	
+	-std=gnu99
+		Request GNU C with ISO C99 rules. System headers can
+		define whatever they please. This is the default
+		setting
+
+In all of these cases, nwcc will define the __GNUC__ macro to tell
+applications and system headers that they are being compiled with a
+gcc-compatible compiler. This can cause problems because nwcc is not
+fully gcc-compatible, and applications may use GNU C features that
+are not implemented (properly) yet.
+
+See
+
+	http://nwcc.sourceforge.net/nwccgnu.html
+
+... for a discussion of why it is often necessary to take this
+"politically incorrect" approach to compatibility.
+
+Two further options will be introduced to change this behavior:
+
+	-notgnu
+		Do not pretend to be gcc anymore (but support GNU C
+		features regardless)
+
+	-gnuc_version=...
+		Prented to be a particular version of gcc. Some
+		applications check for the version number before
+		using new features. The default setting is gcc 3.0
+
+Finally, if nwcc honors the ISO C requests -ansi/-std=c99, then it
+may break some applications that used to compile when nwcc wasn't
+taking these things seriously. For example, let's assume an old
+BSD (e.g. FreeBSD 4.x) application which uses functions like
+fileno() and fdopen(), but also uses -ansi. Because those old
+systems did not separate ISO C namespaces, such a combination would
+have worked then but wouldn't work now - With an up-to-date set of
+library headers and compiler.
+
+In that case the program wouldn't compile with gcc either, but it
+may just be convenient to provide some sort of temporary override
+to request that -ansi be treated like -std=gnu89 and -std=c99 be 
+treated like -std=gnu99. This would be easier to get a broken
+program to work than having to edit build scripts (but of course
+the "politically correct" solution is to fix the program once and
+for all):
+
+	-stdoverride=gnu89	# could be put into config file
+				# or env variable
+------------------------------------------------------------
+
+
+
+Mar 04 2009
+===========
+
+Time to release nwcc 0.7.8!
+
+This version adds support for Mac OS X on x86 and AMD64, and
+NetBSD on x86 systems. Various platform-independent bugs have
+also been fixed.
+
+OS X support took a considerable amount of work because there
+are so many differences in Mach-O vs ELF, position-independent
+code, floating point (uses SSE for float/double even on x86),
+and other things.
+
+It is not quite on par with most other x86-based supported
+systems yet; In part because the system headers use lots of
+very GNU-specific features that aren't fully supported yet,
+and in part because SSE support on x86 isn't complete yet (e.g.
+large integer conversions can fail).
+
+Current test suite results (don't ask why the numbers don't
+add up the same for all):
+
+	Linux/x86:
+	1581 passed
+	41 failed at compile time
+	12 failed at runtime
+
+	Linux/AMD64:
+	1579 passed
+	44 failed at compile time
+	12 failed at runtime
+
+	OSX/x86:
+	1573 passed
+	42 failed at compile time
+	15 failed at runtime
+
+	OSX/AMD64:
+	1566 passed
+	46 failed at compile time
+	18 failed at runtime
+
+	Linux/PPC64
+	1553 passed
+	62 failed at compile time
+	17 failed at runtime
+
+	AIX/PPC32	
+	1539 passed
+	70 failed at compile time
+	23 failed at runtime
+
+By default "./configure; make" on OS X will build 32bit nwcc
+binaries which compile 32bit x86 code by default. You can use
+"make ABI=-m64" to build 64bit nwcc binaries instead which
+compile 64bit AMD64 code by default.
+
+In either case you can use the command line options -arch=x86
+and -arch=amd64 to build for the other architecture instead.
+Note that there are probably still a few cross-compilation
+bugs, so in general 32bit binaries should be used to build
+32bit code and 64bit binaries to build 64bit code.
+

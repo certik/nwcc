@@ -1,0 +1,330 @@
+Aug 20 2006
+===========
+
+Self-compilation with nwcc+nwcpp seems to work on SuSE 8.2/x86 now.
+It is probable that I won't have a lot of problems on newer glibc
+versions and FreeBSD/OpenBSD either, but I'm sure some work still
+has to be done. The Solaris/x86 nwcc port was so smooth that maybe
+nwcpp will work without changes as well. However, I'm afraid of the
+AIX and IRIX headers. Also, #line still isn't done yet, and line
+numbers in general are still broken (fortunately nwcc error/warning
+messages usually output the line text anyway.)
+
+
+Aug 19 2006
+===========
+
+I finished implementing the optimization I mentioned, and although
+it didn't half processing time, it did yield a very noticeable
+speed improvement. The issue of processing time is obscured a bit by
+the fact that I've been compiling nwcpp with profiling support
+enabled, which of course makes it slower. For the benchmark I've
+been doing, with profiling support enabled, the optimization yielded
+a processing time drop from around 0.23 to 0.15 seconds. With
+profiling disabled, the time required is now around 0.09 seconds!
+
+This means nwcpp is about thrice as slow as GNU cpp, which takes 0.03
+seconds, and is exactly the kind of speed I had hoped for. I also
+gave icode.c - the largest nwcc file with more than 20 direct
+includes - a try, and it too shows very pleasant times; nwcpp takes
+around 0.14 and GNU cpp around 0.4. So now I can take a break from
+optimization and get back to bugfixing. The fact that icode.c already
+seems to work smoothly means that correctness is also OK in many
+respects (gcc only indicates that a few ``const'' specifiers are
+lost in some declarations, presumably because of ``#define const''
+stuff in the glibc headers.)
+
+
+Aug 17 2006
+===========
+
+The preprocessor is getting better. There's still a lot of
+brokeness, but at least some headers on my SuSE 8.2 system already
+seem to work well. I eliminated two performance killers; first,
+lookup_macro() used a terrible linear list scan, and now uses a
+hash table. This almost halved processing time! Second, less time
+is now spent looking into #if/#ifdef/etc branches that need not be
+processed. With the trivial and unscientific benchmark I've been
+doing, GNU cpp now takes around 15% of nwcpp's processing time.
+
+This benchmark is actually the tests/x.c file and it includes 7
+system headers. These headers in turn drag in further headers,
+such that I counted a total of 93 #include/#include_next
+directives for this file. Out of these 93 includes, about half of
+them are redundant, i.e. files are needlessly being reprocessed.
+I've begun implementing an optimization that avoids this re-
+reading of header files as much as possible and expect to save
+some more processing time with it.
+
+I hope that will half processing time once more, such that I'm
+thrice as slow as GNU cpp, and then I'll be happy. ;-)
+
+In any case, it won't be long before I attempt to compile nwcc
+with nwcc+nwcpp.
+
+
+Aug 13 2006
+===========
+
+I did some more nwcpp work, but not very much. However, I believe
+I'm not too far from completition. A lot of stuff is still broken,
+but some stuff sort of works. There are some correctness problems
+left that prevent inclusion of various headers from working on
+SuSE 8.2.
+
+Also, there are probably a LOT of places where the code is super
+stupid and naive and always expects an identifier without taking
+the possibility of e.g. comments into account. But what would you
+expect from a new preprocessor that was kludged up from the ground
+in two weeks?
+
+Oh before I forget it, nwcpp is also SUPER SLOW in comparison with
+GNU cpp. When processing a bunch of networking headers on SuSE 8.2,
+GNU cpp only takes about 5-7% of nwcpp's time. I haven't done any
+profiling yet, but I suspect that a lot of recursive header
+inclusions are happening, and that simply recording the beginnings
+and ends of include guards could save a lot of processing time.
+Also, GNU cpp seems to use a heuristic of turning more than 10 or
+so blanked out #if/#ifdef/etc body lines into a compiler line
+directive; Perhaps I can save some time by doing that as well.
+
+
+Aug 6 2006
+==========
+
+Been working on the preprocessor some more, and believe it or not,
+I'm starting to wish I were done with this stuff so I could move
+on and do other things. Generally, however, it's looking fairly
+good. I got #define, #if, #elif, #else, #ifdef, #ifndef, #undef,
+#warning, #error and #include mostly working. That leaves #line
+and #pragma. __FILE__ and __LINE__ are also done already, but I'm
+still not sure the implementation is fully correct. The # and ##
+operators for macro ``stringizing'' and concatenation are also
+done.
+
+A few remaining showstoppers:
+
+   -     The preprocessor doesn't generate any line numbers for
+         use by the compiler yet
+
+   -     macro redefinitions aren't handled correctly and I don't
+         know why.
+
+         #define foo bar
+         #define foo bar
+
+         ... apparently causes the second foo to receive an empty
+         token list as argument
+
+
+   -     The output contains far more newline characters than the
+         input; Line count correctness is thus quite questionable
+
+   -     Some pathological maco replacements don't work yet, such
+         as
+
+         #define foo() lol
+         #define bar foo
+         bar /* comment */ ()
+
+	 (... but I know what the problem is and how to fix it)
+
+I'm sure there are many more fatally severe bugs.
+
+
+Aug 1 2006
+==========
+
+I've been writing preprocessor stuff the past couple of days, and
+basic macro replacement is already working. In fact, recursive
+replacement works too!
+
+	#define foo() lol
+	#define bar(x) x()
+
+	int
+	main() {
+		int	lol = 0;
+		bar(foo) = 128;
+		printf("%d\n", lol);
+	}
+
+
+Of course, as usual, my initial implementation is very simplistic
+and sub-optimal. The approach I'm taking to solve recursion problems
+is simply to re-evaluate the result of every expansion over and over
+again until the evaluation yields no expansions anymore.
+
+Oh, and I almost forgot to mention that the code is generally rather
+kludged and botched up, and is quite adhoc and weak with regards to
+whitespace.
+
+Also, I haven't implemented any other preprocessor directives yet,
+so the program is still just as useless as it was a week ago. My
+current plan is to get the preprocessor into a shape that makes it
+usable as a very basic emergency replacement for GNU cpp on systems
+like AIX and IRIX, where gcc may not be available. Afterwards I'll
+fix MIPS bugs and add N64 support (finally!) If time permits, I'll
+also do O32 support and some platform-independent bug fixing. Then
+I'll probably make a new release.
+
+The good news is that I have a week of vacation now, so a lot of
+code is going to be written.
+
+
+
+Jul 23 2006
+===========
+
+I started writing the preprocessor. The primary tasks so far have 
+been to rip the lexcial analysis and token stuff out of nwcc, and
+to create a command line argument handling framework around it.
+
+I initially considered using the same files for lexical analysis
+in nwcc and nwcpp, and using ``#ifdef PREPROCESSOR'' to separate
+preprocessor-specific from compiler-specific bits, but I quickly
+realized how much of a code quality degradation that would be.
+
+Now I have a completely separate preprocessor that will be
+comparatively small, easy to read, understand and modify, and
+easy to adapt to C++. Perfect!
+
+(The preprocessor is currently completely nonfunctional but I'm
+including it in the tarball for backup purposes ;-))
+
+
+Jul 22 2006
+===========
+
+Fixed some ``long long'' problems on x86, added __builtin_expect,
+and some other stuff that I cannot remember now. I also improved
+constant expression evaluation and split that stuff from expr.c
+into a new file - evalexpr.c - so I hope this build setup doesn't
+break on other platforms because of unexpected linking problems
+or somesuch.
+
+I considered starting writing a PA-RISC backend today, but I
+guess I need a small break from writing new architecture support,
+so I'll probably do a preprocessor next. It would be neat to get
+rid of gcc dependencies, such that I can ship self-contained
+binary packages for systems like AIX, IRIX and HP-UX, where there
+is no usable C compiler installed by default.
+
+
+Jul 22 2006
+===========
+
+Added support for Solaris/x86. I find it difficult to
+understand the intentions of operating system developers
+who in 2006 still aren't interested in providing sensible
+settings for ``advanced'' functionality such as the
+backspace key.
+
+stty erase '^H', my ass.
+
+Anyway, the port took half an hour or so and I only had
+to add 11-12 new lines of code to get it to work. Of course
+the ease with which it worked is most certainly due to the
+fact that I use GNU cpp and gas on Solaris. I'm expecting
+more hostility when I have an own preprocessor.
+
+
+Jul 21 2006
+===========
+
+I added long long shift left/right and int<->fp conversions
+for PowerPC. I have to say that ``frustrating'' barely begins
+to describe the overall mood this stuff gave me. But now it
+seems to be mostly done and I'm going to work on other stuff.
+
+A few remaining known PowerPC problems that I'll fix later:
+
+        - Inline asm is missing
+
+        - Structs/unions cannot be passed to variadic
+          functions
+
+        - long double is treated like double, which I'm not
+          sure is correct 
+
+long double and long long generally tend to yield nothing but
+terror, chaos and misery, so I'd have expected long double to
+require a software floating point implementation; However, it
+seems that gcc, at least on 32-bit AIX, also makes long
+double an alias for double.
+
+By the way, PowerPC int<->fp conversion is so totally out of
+touch with reality that I'm beginning to wonder whether x87
+is ``the best of a bad bunch'', as far as FPUs are concerned.
+The x87 register stack architecture is one of the most terrible
+things I have ever seen, and fp->int conversion is a pain as
+well, but if you get past all of these things then x87 does
+everything for you, including long double. What use is an
+FPU that requies you to implement support for one or more
+types entirely in software?
+
+FPUs are generally completely kludged. Maybe Alpha's FP looks
+better; I'm told it is more integrated with the main CPU. 
+
+
+Jul 16 2006
+===========
+
+Oops, turns out there were some critical bugs in long long
+division/multiplication on x86. Also, compiling gxemul with
+nwcc/gas yields an internal gxemul error, whereas nwcc/nasm
+seems to be more successful (though buggy still.) So I have
+reverted to nasm as default assembler; Use the ASM
+environment variable if you want to use gas (much faster
+than nasm.)
+
+
+Jul 15 2006
+============
+
+A new release - nwcc 0.6.3! This release adds support for the
+PowerPC architecture, which is currently 32bit-only, and only
+supports AIX. There are also many new AMD64 features, such as
+floating point, inline assembly, and FreeBSD/AMD64 support.
+gas is now the default assembler on x86 - set the ASM
+environment variable to ``nasm'' or ``yasm'' if you want nwcc
+to use one of those assemblers instead.
+
+I have written the PowerPC stuff on a 7043-150 system running
+AIX 5.3, and compiled it with gcc 3.4.3. Please note that this
+backend doesn't work on POWER machines because I have chosen
+to use hardware division and floating point instructions that
+are only available on PowerPC.
+
+As you'd expect, there are some missing features and bugs in
+my additions, most notably:
+
+       - Integer <-> floating point conversion, long double
+         and possibly some other floating point stuff isn't
+         implemented yet
+
+       - Inline assembly support is missing
+
+       - Passing structs/unions to variadic functions is
+         missing
+
+       - As usual, I've decided to pass structs/unions on the
+         stack instead of in registers, thus making this part
+	 incompatible with gcc for now
+
+       - There are probably a lot of other problems because
+         the only testing I have done is nwcc self-compilation
+
+
+I'm not a big POWER/PowerPC user and I haven't seen a lot of
+such systems, so I'm very interested in feedback; Does nwcc
+run on your RS/6000 or pSeries machine(s)? If yes, which
+hardware and operating system version are you using? I'd also
+like to add 64bit support, so please contact me if you could
+give me remote access to a 64bit AIX system for doing so.
+Finally, I would also be interested in supporting MacOS X/PPC
+and Linux/BSD on PPC - again, your help would be appreciated.
+
+(I'm going to complete PPC floating point support on the next
+couple of days - again, these additions will show up as
+nwcc_unstable.tar.gz on Sourceforge.)
