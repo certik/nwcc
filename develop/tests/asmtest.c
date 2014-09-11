@@ -16,7 +16,7 @@ __asm__ __volatile__(  "1:\tlodsb\n\t"
 		       : "=S" (foo)
                      : "S" (src),"D" (dest)
                      : "memory");
-return dest;
+ return dest;
 }
 int main(void)
 {
