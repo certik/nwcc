@@ -1,7 +1,7 @@
 /*
  * Written by Nils R. Weller on May 28 and June 2 2007
  *
- * nweller<at>tzi<dot>de
+ * nils<at>gnulinux<dot>nl
  */
 #ifdef _AIX
 #define _ALL_SOURCE 1

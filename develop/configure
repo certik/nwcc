@@ -229,7 +229,7 @@ echo "    Setting PICFLAGS to $PICFLAGS"
 checklibdir() {
 	if test -d $1; then
 		# directory exists
-		if test "$1/libc.so" && test "$1/crt1.o"; then
+		if test -f "$1/libc.so" && test -f "$1/crt1.o"; then
 			# and has relevant libraries
 			if file "$1/crt1.o" | grep $2 >/dev/null; then
 				# ... with correct bitness
@@ -290,7 +290,7 @@ if test "$SYS" = "AIX"; then
 	fi
 	rm -f _test.c a.out
 elif test "$SYS" = Linux; then
-	if test "`uname -m`" = x86_64; then
+		if test "`uname -m`" = x86_64 || test "`uname -m`" = i686; then
 		# 07/24/12: The library situation has deteriorated further; we need to
 		# resolve the confusion between lib, lib32, lib64 and others. For now we just
 		# do a simplistic basic libc.so and crt module check without looking 
@@ -318,13 +318,13 @@ elif test "$SYS" = Linux; then
 			fi
 		fi
 		# Check 64bit runtime linker
-		if test "/lib64/ld-linux-x86-64.so.2"; then
+		if test -f "/lib64/ld-linux-x86-64.so.2"; then
 			RTLDDIR_64="/lib64/"
 		else
-			if test "/lib/ld-linux-x86-64.so.2"; then
+			if test -f "/lib/ld-linux-x86-64.so.2"; then
 				RTLDDIR_64="/lib/"
 			else
-				if test "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"; then
+				if test -f "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"; then
 					RTLDDIR_64="/lib/x86_64-linux-gnu/"
 				fi
 			fi
@@ -374,16 +374,16 @@ elif test "$SYS" = Linux; then
 
 
 		# Check 32bit runtime linker
-		if test "/lib32/ld-linux.so.2"; then
+		if test -f "/lib32/ld-linux.so.2"; then
 			RTLDDIR_32="/lib32/"
 		else
-			if test "/lib/ld-linux.so.2"; then
+			if test -f "/lib/ld-linux.so.2"; then
 				RTLDDIR_32="/lib/"
 			else
-				if test "/lib/i686-linux-gnu/ld-linux.so.2"; then
+				if test -f "/lib/i686-linux-gnu/ld-linux.so.2"; then
 					RTLDDIR_32="/lib/i686-linux-gnu/"
 				else
-					if test "/lib/i386-linux-gnu/ld-linux.so.2"; then
+					if test -f "/lib/i386-linux-gnu/ld-linux.so.2"; then
 						RTLDDIR_32="/lib/i386-linux-gnu/"
 					fi
 				fi

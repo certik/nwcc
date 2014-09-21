@@ -1318,21 +1318,6 @@ print_mem_operand(struct vreg *vr, struct token *constant) {
 			 */
 			x_fputc('$', out);
 		}	
-		/* if (t->type == TY_INT) {
-			x_fprintf(out, "%d", 
-				*(int *)t->data);
-		} else if (t->type == TY_UINT) {
-			x_fprintf(out, "%u", 
-				*(unsigned *)t->data);
-		} else if (t->type == TY_LONG
-			|| t->type == TY_LLONG) {
-			x_fprintf(out, "%ld", 
-				*(long *)t->data);
-		} else if (t->type == TY_ULONG
-			|| t->type == TY_ULLONG) {
-			x_fprintf(out, "%lu",
-				*(unsigned long *)t->data);
-		}*/
 		if (IS_INT(t->type) || IS_LONG(t->type) || IS_LLONG(t->type)) {
 			cross_print_value_by_type(out, t->data, t->type, 0);
 #if ALLOW_CHAR_SHORT_CONSTANTS
@@ -1361,11 +1346,8 @@ print_mem_operand(struct vreg *vr, struct token *constant) {
 		vr2 = get_parent_struct(vr);
 		if ((d2 = vr2->var_backed) != NULL) {
 			unsigned long	off = calc_offsets(vr);
-#if 0
-			hm continue here, upwards
-#endif
+
 			if (d2->stack_addr) {
-				/* XXX wow this sux */
 				if (vr2->var_backed->stack_addr->is_func_arg) {
 					vr2->var_backed->stack_addr->offset +=
 						/*vr->memberdecl->offset*/ off;

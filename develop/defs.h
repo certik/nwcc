@@ -27,7 +27,7 @@
 #ifndef DEFS_H
 #define DEFS_H
 
-#define NWCC_VERSION "0.8.3"
+#define NWCC_VERSION "0.8.2"
 
 #include "token.h"
 

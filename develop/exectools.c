@@ -91,10 +91,17 @@ do_asm(char *file, char *asm_flags, int abiflag) {
 			fd = exec_cmd(1, asmflag, " %s   %s", file, asm_flags);
 		}
 	} else if (sysdep_get_host_arch() == ARCH_AMD64) {
+		/*
+		 * 07/26/12: Allow for cross compilation with assembler
+		 * integration in mixed 32/64bit AMD64 systems
+		 */
 		if (assembler == ASM_GAS) {
-			fd = exec_cmd(1, asmflag, " %s %s", file, asm_flags);
-		} else {	
-			fd = exec_cmd(1, asmflag, " %s %s", file, asm_flags);
+			fd = exec_cmd(1, asmflag, " %s %s %s",
+				archflag == ARCH_X86? "--32": "--64", file, asm_flags);
+		} else {
+			/* yasm */
+			fd = exec_cmd(1, asmflag, " %s %s %s",
+				archflag == ARCH_X86? "-m32": "-m64", file, asm_flags);
 		}	
 	} else if (sysdep_get_host_arch() == ARCH_MIPS) {
 		fd = exec_cmd(1, asmflag,

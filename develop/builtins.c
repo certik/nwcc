@@ -1446,6 +1446,7 @@ amd64_builtin_va_start_to_icode(
 	ii = icode_make_setreg(r->composed_of[0], /*48*/ fp_start_offset); /* begins after gprs */
 
 	append_icode_list(il, ii);
+
 	patches->fp_offset = ii->dat;
 	vreg_map_preg(tempvr, r->composed_of[0]);
 	icode_make_store(curfunc, tempvr, tempvr, il);

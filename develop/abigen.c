@@ -44,6 +44,7 @@ struct type {
 struct function {
 	struct type	*args_head;
 	struct type	*args_tail;
+	int		variadic;
 };
 
 static char *
@@ -153,7 +154,17 @@ static struct function
 gen_function(void) {
 	int		arg_count = getrand(maxargs);
 	int		i;
+	int		b;
 	struct function	ret = { NULL, NULL };
+
+	b = getrand(20);
+	if (b % 2 == 0) {
+		do {
+			ret.variadic = getrand(maxargs);
+		} while (ret.variadic == 0);
+	} else {
+		ret.variadic = -1;
+	}
 
 	for (i = 0; i < arg_count; ++i) {
 		struct type	*ty;
@@ -177,6 +188,10 @@ write_proto(struct function *f) {
 	printf("\nvoid f(\n");
 
 	for (ty = f->args_head, index = 0; ty != NULL; ty = ty->next, index++) {
+		if (f->variadic != -1 && index == f->variadic) {
+			printf("...");
+			break;
+		}
 		printf("%s a%d", type_to_text(ty), index);
 		if (ty->next != NULL) {
 			printf(", ");
@@ -210,12 +225,36 @@ gen_program(void) {
 	srand(tv.tv_usec);
 	f = gen_function();
 
+	if (f.variadic != -1) {
+		printf("#include <stdarg.h>\n");
+	}
 
 	/* Write function definition */
 	write_proto(&f);
 
 	printf("{\n");
+
+	if (f.variadic != -1) {
+		printf("\tva_list va;\n");
+	}
+
 	for (ty = f.args_head, index = 0; ty != NULL; ty = ty->next, index++) {
+		if (f.variadic != -1 && f.variadic <= index) {
+			if (f.variadic == index) {
+				/* Initialize */
+				printf("\tva_start(va, a%d);\n", index-1);
+			}
+			printf("\t{\n");
+			printf("\t%s a%d = va_arg(va, ",           //%s);\n",
+				type_to_text(ty), index, type_to_text(ty));
+			if (ty->type == TY_FLOAT) {
+				printf("double);\n");
+			} else if (ty->type >= TY_CHAR && ty->type <= TY_INT) {
+				printf("int);\n");
+			} else {
+				printf("%s);\n", type_to_text(ty));
+			}
+		}
 		if (ty->type == TY_STRUCT) {
 			struct type	*ty2;
 			/* XXX no nested structs allowed for now */
@@ -228,6 +267,12 @@ gen_program(void) {
 			printf("\tprintf(\"%%%s\\n\", a%d);\n",
 				type_to_fmtstring(ty), index);
 		}
+		if (f.variadic != -1 && f.variadic <= index) {
+			printf("\t}\n");
+		}
+	}
+	if (f.variadic != -1) {
+		printf("\tva_end(va);\n");
 	}
 	printf("\n}\n");
 
@@ -254,14 +299,14 @@ gen_program(void) {
 			printf("(struct s%d){", ty->struct_idx);
 			/* XXX no nested structs allowed for now */
 			for (ty2 = ty->struct_members_head; ty2 != NULL; ty2 = ty2->next) {
-				printf("%d", value++);
+				printf("(%s)%d", type_to_text(ty2), value++);
 				if (ty2->next != NULL) {
 					printf(", ");
 				}
 			}
 			printf("}");
 		} else {
-			printf("%d", value++);
+			printf("(%s)%d", type_to_text(ty), value++);
 		}
 		if (ty->next != NULL) {
 			printf(", ");

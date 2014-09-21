@@ -64,6 +64,9 @@ char		*asmname;
 char		*gnuc_version;
 char		*cppflag;
 
+int		m32flag;
+int		m64flag;
+
 int		Oflag;
 int		archflag;
 int		abiflag;
@@ -296,6 +299,8 @@ main(int argc, char *argv[]) {
 		{ 0, "dM", 0 },
 		{ 0, "mabi", 1 },
 		{ 0, "maix64", 0 },
+		{ 0, "m32", 0 },
+		{ 0, "m64", 0 },
 		{ 0, "mminimal-toc", 0 },
 		{ 0, "mfull-toc", 0 },
 		{ 0, "funsigned-char", 0 },
@@ -626,6 +631,12 @@ main(int argc, char *argv[]) {
 						puts(buf);
 					}	
 					exit(0);
+				} else if (strcmp(options[idx].name, "m32") == 0) {
+					/* XXX only supported for AMD64 now */
+					m32flag = 1;
+				} else if (strcmp(options[idx].name, "m64") == 0) {
+					/* XXX only supported for AMD64 now */
+					m64flag = 1;
 				} else if (strcmp(options[idx].name, "maix64")
 					== 0) {
 					abi_str = n_xstrdup("aix64"); /* XXX */
@@ -805,29 +816,59 @@ main(int argc, char *argv[]) {
 	}
 	cpp_args[cppind] = NULL;
 
+	if ((m32flag && m64flag)) {
+		(void) fprintf(stderr, "Error: Invalid combination of architecture settings\n");
+		usage();
+	}
+		
 
-
-	set_target_arch_and_abi_and_sys(&archflag, &abiflag, &sysflag, target_str, abi_str, sys_str);
-	if (target_str != NULL) {
+	{
 		int	hostarch;
 		int	hostabi;
 		int	hostsys;
 
 		get_host_arch(&hostarch, &hostabi, &hostsys);
-		if ((archflag != hostarch || sysflag != hostsys) && !Sflag) {
-			/*
-			 * 02/21/09: Allow x86/AMD64 natively on OSX, where they
-			 * are similar to ABI settings on IRIX and AIX
-			 * XXX we should allow this on Linux and BSD as well
-			 */ 
-			if (sysflag == OS_OSX) {
-				 ;
-			} else {
-				if (!dump_target_id_flag) {
-					(void) fprintf(stderr, "Warning: Cross-compilation "
-						"implies -S (only generates *.asm file.)\n");
+
+		/*
+		 * 07/26/12: we can now evaluate the -m32/64 otherwise ambiguous flags
+		 */
+		if (m32flag) {
+			if (hostarch == ARCH_AMD64) {
+				if (target_str != NULL) {
+					(void) fprintf(stderr, "Error: Invalid combination of architecture settings\n");
+					usage();
 				}
-				Sflag = 1;
+				target_str = "x86"; /* Cross-compile for x86 */
+			}
+		}
+		if (m64flag) {
+			if (hostarch == ARCH_AMD64) {
+				if (target_str != NULL) {
+					(void) fprintf(stderr, "Error: Invalid combination of architecture settings\n");
+					usage();
+				}
+			}
+		}
+
+		set_target_arch_and_abi_and_sys(&archflag, &abiflag, &sysflag, target_str, abi_str, sys_str);
+		if (target_str != NULL) {
+			if ((archflag != hostarch || sysflag != hostsys) && !Sflag) {
+				/*
+				 * 02/21/09: Allow x86/AMD64 natively on OSX, where they
+				 * are similar to ABI settings on IRIX and AIX
+				 * XXX we should allow this on Linux and BSD as well
+				 * 07/26/12: k.
+				 */ 
+				if ((archflag == ARCH_AMD64 && hostarch == ARCH_X86)
+					|| (archflag == ARCH_X86 && hostarch == ARCH_AMD64)) {
+					 ;
+				} else {
+					if (!dump_target_id_flag) {
+						(void) fprintf(stderr, "Warning: Cross-compilation "
+							"implies -S (only generates *.asm file.)\n");
+					}
+					Sflag = 1;
+				}
 			}
 		}
 	}
@@ -954,7 +995,11 @@ main(int argc, char *argv[]) {
 		int	is_64bit =
 			abiflag == ABI_POWER64
 			|| abiflag == ABI_MIPS_N64
-			|| abiflag == ABI_SPARC64;
+			|| abiflag == ABI_SPARC64
+			|| archflag == ARCH_AMD64; /* XXX ugly - only x86/amd64
+						  * are treated as separate
+						  * architctures
+						  */
 
 		if (sharedflag) {
 			/*

@@ -510,7 +510,6 @@ map_parameters(struct function *f, struct ty_func *proto) {
 		 * registers; those are then followed by any possibly
 		 * stack-passed variadic arguments.
 		 * 6 arg regs * 8 = 48 bytes
-		 * XXX floating point!! mmm..sse registers.mmm
 		 */
 		f->fty->lastarg = alloc_decl();
 
@@ -660,21 +659,41 @@ map_parameters(struct function *f, struct ty_func *proto) {
 		save_area = f->fty->lastarg->stack_addr;
 		if (gprs_used == 6) {
 			/* All variadic stuff passed on stack */
+
+			/*
+			 * 09/20/2014: The code below is definitely harmful because
+			 * it completely alters the meaning of fty->lastarg->stack_addr,
+			 * which is assumed to point to the register save area
+			 * by the va_start patching code below
+			 */
+			#if 0 /*
+			       * 07/30/12: Don't "reset" stack block address we allocated;
+			       * we may still need it to save FPRs and even if we don't
+			       * it should not be harmful since the variable is only used
+			       * for saving registers
+			       */
 			f->fty->lastarg->stack_addr =
 				make_stack_block(offset, 0);
 			f->fty->lastarg->stack_addr->is_func_arg = 1;
+			#endif
 		} else {
+/*
+ This ignores FP:  ???
+ */
 			f->fty->lastarg->stack_addr->from_reg =
 				(void *)&amd64_argregs[gprs_used]; /* XXX */
 		}
+
+
 		if (f->patchme) {
 			struct amd64_va_patches	*p = f->patchme;
 			int			n;
 
 			/*
-			 * 08/07/08: Use a loop because there may be
-			 * multiple items to be patched! (Multiple
-			 * va_start() calls in the function)
+			 * We now compute the initial values for the va_list fields
+			 * gp_offset and fp_offset (see builtins.c). This is done for
+			 * every call to va_start() (p is the head of a list of patch
+			 * entries, with one entry for every va_start() call)
 			 */
 			for (; p != NULL; p = p->next) {
 				if (gprs_used == 6) {
@@ -691,6 +710,7 @@ map_parameters(struct function *f, struct ty_func *proto) {
 						x86_sse_regs) * 8;
 					n += 48;
 				}
+				*p->fp_offset = n; /* 07/30/12: This was missing */
 
 				*p->reg_save_area = *save_area;
 				if (gprs_used == 6) {
@@ -701,6 +721,9 @@ map_parameters(struct function *f, struct ty_func *proto) {
 					 */
 					*p->overflow_arg_area =
 						*f->fty->lastarg->stack_addr;
+/*
+ This ignores FP:  ???
+ */
 				} else {
 					/*
 					 * 07/25/12: The stack area begins at [rbp + 16],
@@ -726,11 +749,6 @@ map_parameters(struct function *f, struct ty_func *proto) {
 					p->overflow_arg_area->is_func_arg = 1;
 				}
 			}
-#if 0
-printf("gp offset = %d\n", n);
-printf("reg save area = %d\n", p->reg_save_area->offset);
-printf("overflow area = %d\n", p->overflow_arg_area->offset);
-#endif
 		}
 	}
 }
@@ -848,14 +866,19 @@ gen_function(struct function *f) {
 	f->callee_save_offset = f->total_allocated;
 
 	if (stackprotectflag) {
-		f->total_allocated += 4;
+		/* 09/20/14: This flag has not been tested in a long time, but
+		 * only 4 bytes were allocated here - this is clearly wrong
+		 * (as evidenced by the AMD64 emit_save_ret_addr). We now
+		 * allocate 8
+		 */
+		f->total_allocated += 8;
 		/*
 		 * 08/03/11: The save_ret_addr stack block was cached here,
 		 * which caused the (later introduced) zone allocator to 
 		 * trash the "frame pointer" flag while resetting memory
 		 */
 		saved_ret_addr
-			= make_stack_block(f->total_allocated, 4);
+			= make_stack_block(f->total_allocated, 8);
 	}
 
 	/* Allocate storage for temporarily saving GPRs & patch offsets */
@@ -936,28 +959,91 @@ gen_function(struct function *f) {
 					se->dec->stack_addr->from_reg);	
 			}
 		}
-		if (f->fty->variadic
-			&& f->fty->lastarg->stack_addr->from_reg != NULL) {
-			struct reg	**r;
+
+		if (f->fty->variadic) {
+/*			&& f->fty->lastarg->stack_addr->from_reg != NULL) {*/
 			size_t		saved_offset =
 				f->fty->lastarg->stack_addr->offset;
+ 
+			/*
+			 * 09/20/2014: XXX XXX XXX This assumes that from_reg
+			 * is a GPR - could it not be an FPR? (see also
+			 * comments on FPR saving below)
+			 */
+			if (f->fty->lastarg->stack_addr->from_reg != NULL) {
+				struct reg	**r;
 
-			r = (struct reg **)f->fty->
-				lastarg->stack_addr->from_reg; /* XXX */
-			f->fty->lastarg->stack_addr->offset -=
-				(r - amd64_argregs) * 8;
-			for (i = r - amd64_argregs; i < N_ARGREGS; ++i) {
-				store_preg_to_var(f->fty->lastarg, 8,
-					amd64_argregs[i]);
-				f->fty->lastarg->stack_addr->offset -= 8;
+				/*
+				 * 09/20/2014: The lastarg stack address points
+				 * to the beginning of the register save area
+				 * for GPRs and (followed by) FPRs now. We
+				 * first skip those GPRs that do not need to
+				 * saved to the save area because they are not
+				 * passed through the stdarg ellipsis, but
+				 * rather as ordinary arguments
+				 */
+				r = (struct reg **)f->fty->
+					lastarg->stack_addr->from_reg; /* XXX */
+				f->fty->lastarg->stack_addr->offset -=
+					(r - amd64_argregs) * 8;
+
+				/*
+				 * We now store all remaining GPRs to the
+				 * corresponding slots in the register save
+				 * area.
+				 *
+				 * The offset is relative to the frame pointer
+				 * and decreases by one slot for every GPR
+				 * (we end up pointing to the beginning of
+				 * the SSE regs area at the end)
+				 */
+				for (i = r - amd64_argregs; i < N_ARGREGS; ++i) {
+					store_preg_to_var(f->fty->lastarg, 8,
+						amd64_argregs[i]);
+					f->fty->lastarg->stack_addr->offset -= 8;
+				}
+			} else {
+				/*
+				 * No GPRs are subject to variadic argument
+				 * access, but we need to set the current
+				 * stack offset to the FP area for the
+				 * subsequent FP processing
+				 */
+				f->fty->lastarg->stack_addr->offset -= 48;
 			}
 
-			/* XXX ... */
+			/*
+			 * Store SSE registers as well
+			 */
+
+			/*
+			 * 09/20/2014: This incorrectly restored the offset to the
+			 * very beginning of the save area block for all registers
+			 * without skipping the GPR part (located in the lower
+			 * portion of the block) to get to the FPR part. 
+			 * This is now accomplished by subtracting the size of the
+			 * GPR part.
+			 *
+			 * XXX It seems that FPRs should be handled analogously
+			 * to the way GPRs are saved above - by checking how
+			 * many FPRs have already been passed as ordinary
+			 * arguments to avoid unnecessary stores.
+			 *
+			 * XXX XXX XXX The way GPRs are handled right now looks
+			 * incorrect because it assumes that ``lastarg->stack_addr->from_reg''
+			 * (if non-null) is a GPR.
+			 */
+			f->fty->lastarg->stack_addr->offset = 48+8*8 - 48;
 			for (i = 0; i < 8; ++i) {
+				int saved_is_func_arg = f->fty->lastarg->stack_addr->is_func_arg;
+
 				f->fty->lastarg->dtype =
-					make_basic_type(TY_DOUBLE);
+					make_basic_type(TY_LDOUBLE);
+
+				f->fty->lastarg->stack_addr->is_func_arg = 0;
 				store_preg_to_var(f->fty->lastarg, 8,
 					&x86_sse_regs[i]);
+				f->fty->lastarg->stack_addr->is_func_arg = saved_is_func_arg;
 				f->fty->lastarg->stack_addr->offset -= 8;
 			}
 

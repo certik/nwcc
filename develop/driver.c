@@ -149,9 +149,13 @@ driver(char **cpp_flags, char *asm_flags, char *ld_flags, char **files) {
 #endif
 			sprintf(ld_pre_std_flags, sharedflag? "": LIBDIR_32 "crt1.o");
 			sprintf(ld_std_flags,
-				"-lc %s " LIBDIR_32 "crti.o "
+				/*
+				 * 12/26/12: Allow for 32bit cross linking on an AMD64 host
+				 */
+				"%s -lc %s " LIBDIR_32 "crti.o "
 				LIBDIR_32 "crtn.o " LIBDIR_32 "libc.so "
 				"--dynamic-linker " RTLDDIR_32 "ld-linux.so.2 ",
+				sysdep_get_host_arch() == ARCH_AMD64? "-melf_i386 ": "",
 				sharedflag? "-shared": "");  /*"/usr/lib/crt1.o");*/
 #undef LIBDIR_32
 #undef RTLDDIR_32

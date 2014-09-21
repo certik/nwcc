@@ -22,15 +22,20 @@ shift
 
 while test $CNT != $MAX; do
 	echo $CNT
-	if ! ./abigen $@ >x.c; then
+	# splitting doesn't work with structs right now
+	if ! ./abigen --split $@ >x.c; then
 		echo abigen error
 		exit 1
 	fi
-	gcc x.c -o x
+	gcc x.c y.c -o x
 	./x >gcc.out
 
-	if ! nwcc x.c -o x; then
+	if ! nwcc x.c -c; then
 		echo x.c failed
+		exit 1
+	fi
+	if ! gcc x.o y.c -o x; then
+		echo failed
 		exit 1
 	fi
 	./x >nwcc.out
