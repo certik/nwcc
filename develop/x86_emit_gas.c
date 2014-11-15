@@ -3559,6 +3559,7 @@ struct emitter x86_emit_gas = {
 	emit_static_uninit_thread_vars,
 	NULL, /* struct_defs */
 	emit_comment,
+	NULL, /* emit_debug */
 
 	emit_dwarf2_line,
 	emit_dwarf2_files,

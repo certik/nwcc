@@ -456,7 +456,11 @@ do_xlate(
 		emit->comp_goto(ip->dat);
 		break;
 	case INSTR_DEBUG:
-		emit->comment(ip->dat);
+		if (emit->debug != NULL) {
+			emit->debug(ip);
+		} else {
+			emit->comment(ip->dat);
+		}
 		break;
 	case INSTR_DBGINFO_LINE:
 		emit->dwarf2_line(ip->dat);

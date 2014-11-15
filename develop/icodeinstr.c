@@ -1635,6 +1635,7 @@ void
 icode_make_debug(struct icode_list *il, const char *fmt, ...) {
 	struct icode_instr	*ret = alloc_icode_instr();
 	char			buf[2048];
+	struct reg		*trashed_reg = NULL;
 	va_list			va;
 
 #define EXTRAMSG 0 
@@ -1655,8 +1656,35 @@ icode_make_debug(struct icode_list *il, const char *fmt, ...) {
 	strcat(buf, extramsg);
 #endif
 
+	if (0  &&   emit->debug != NULL) {
+		/*
+		 * 2014/09/28: We generate code to actually emit the message at runtime. This
+		 * involves constructing a message and loading it into a register, passing on
+		 * the debug instruction to the emitter, and restoring the register we used - if
+		 * necessary. It is assumed that the emitter will not touch any other registers.
+	 	 *
+		 * This is a quick kludge to get this functionality up and running on AMD64.
+		 * The debug instruction emitter must also use pop to restore the register.
+		 */
+		struct token		*tok = const_from_string(buf);
+		struct vreg		*msg_vreg = vreg_alloc(NULL, tok, NULL, NULL);
+		
+		if (amd64_argregs[0]->vreg != NULL && amd64_argregs[0]->vreg->pregs[0] == amd64_argregs[0] && amd64_argregs[0]->used) {
+			struct icode_instr	*ii = icode_make_push(amd64_argregs[0]->vreg, il);
+			trashed_reg = amd64_argregs[0];
+			append_icode_list(il, ii);
+			ii = icode_make_push(amd64_argregs[0]->vreg, il);
+			append_icode_list(il, ii);
+		}
+
+	        vreg_faultin(amd64_argregs[0], NULL, msg_vreg, il, 0);
+	}
+
 	ret->type = INSTR_DEBUG;
 	ret->dat = n_xstrdup(buf);
+	if (trashed_reg != NULL) {
+		ret->hints |= HINT_INSTR_GENERIC_MODIFIER;
+	}
 
 	append_icode_list(il, ret);
 }

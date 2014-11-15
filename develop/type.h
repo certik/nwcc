@@ -414,6 +414,8 @@ struct token		*const_from_type(struct type *ty, int from_alignment,
 		int	extype, struct token *tok);
 struct token		*fp_const_from_ascii(const char *asc, int type);
 struct token		*const_from_value(void *value, struct type *ty);
+struct token		*const_from_string(const char *value);
+
 int	check_types_assign(
 	struct token *t,
 	struct type *left,

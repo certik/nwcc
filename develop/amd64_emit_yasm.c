@@ -1489,6 +1489,7 @@ struct emitter amd64_emit_yasm = {
 
 	NULL, /*emit_struct_defs,*/
 	emit_comment,
+	NULL, /* emit_debug */
 	emit_dwarf2_line,
 	emit_dwarf2_files,
 	emit_inlineasm,

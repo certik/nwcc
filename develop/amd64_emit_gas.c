@@ -166,6 +166,30 @@ emit_support_buffers(void) {
 	}
 #endif
 	x86_emit_gas.support_buffers();
+	emit->setsection(SECTION_TEXT);
+
+
+#if 0
+	x_fprintf(out, "printdebugmsg:\n");
+	{
+		int	i;
+		for (i = 0; i < 6; ++i) {
+			x_fprintf(out, "\tpush %%%s\n", amd64_x86_gprs[i].name);
+		}
+		for (i = 8; i < 16; ++i) {
+			x_fprintf(out, "\tpush %%%s\n", amd64_gprs[i].name);
+		}
+		x_fprintf(out, "\tmov $0, %%rax\n");  /* No FP regs used */
+		x_fprintf(out, "\tcall printf\n");
+		for (i = 15; i >= 8; --i) {
+			x_fprintf(out, "\tpop %%%s\n", amd64_gprs[i].name);
+		}
+		for (i = 5; i >= 0; --i) {
+			x_fprintf(out, "\tpop %%%s\n", amd64_x86_gprs[i].name);
+		}
+		x_fprintf(out, "\tret\n");
+	}
+#endif
 }
 
 static void
@@ -183,6 +207,30 @@ emit_comment(const char *fmt, ...) {
 		perror("vfprintf");
 		exit(EXIT_FAILURE);
 	}
+}
+
+
+static void
+emit_debug(struct icode_instr *ii) {
+	int		rc;
+	char		buf[1024];
+
+	/*
+	 * Print as comment to asm file
+	 */
+
+	emit_comment("%s", ii->dat);
+
+#if 0
+	/*
+	 * Generate code to display at runtime as well
+	 */
+	x_fprintf(out, "\tcall printdebugmsg\n");
+	if (ii->hints & HINT_INSTR_GENERIC_MODIFIER) {
+		x_fprintf(out, "\tpop %%%s\n", amd64_argregs[0]->name);
+		x_fprintf(out, "\tpop %%%s\n", amd64_argregs[0]->name);
+	}
+#endif
 }
 
 static void
@@ -1615,6 +1663,7 @@ struct emitter amd64_emit_gas = {
 	emit_static_uninit_thread_vars,
 	NULL,  /*emit_struct_defs,*/
 	emit_comment,
+	emit_debug,
 	emit_dwarf2_line,
 	emit_dwarf2_files,
 	emit_inlineasm,

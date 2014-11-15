@@ -433,6 +433,7 @@ typedef void	(*pic_support_func_t)(void); /* opt, cmdline */
 
 
 typedef void	(*comment_func_t)(const char *fmt, ...);
+typedef void	(*debug_func_t)(struct icode_instr *ii);
 typedef void	(*dwarf2_line_func_t)(struct token *);
 typedef void	(*dwarf2_files_func_t)(void);
 typedef void	(*inlineasm_func_t)(struct inline_asm_stmt *);
@@ -550,6 +551,7 @@ struct emitter {
 
 	struct_defs_func_t	struct_defs;
 	comment_func_t		comment;
+	debug_func_t		debug;
 
 	/* 10 */
 	dwarf2_line_func_t	dwarf2_line;

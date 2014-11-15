@@ -116,6 +116,18 @@ check_main(struct token *t, struct type *ty) {
 	}
 }	
 
+static int
+is_deferrable_inline_function(struct function *func) {
+	if (IS_INLINE(func->proto->dtype->flags) &&
+		(func->proto->dtype->storage == TOK_KEY_EXTERN
+			|| func->proto->dtype->storage == TOK_KEY_STATIC)) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+
 /* 
  * Do semantic analysis of translation unit. 
  * Initialize functions, structure, globals subsystems
@@ -593,9 +605,10 @@ do_decl:
 				process_labels_used_list(curfunc);
 
 #if XLATE_IMMEDIATELY
-				if (IS_INLINE(func->proto->dtype->flags) &&
+				if (/*IS_INLINE(func->proto->dtype->flags) &&
 					(func->proto->dtype->storage == TOK_KEY_EXTERN
-					|| func->proto->dtype->storage == TOK_KEY_STATIC)) {
+					|| func->proto->dtype->storage == TOK_KEY_STATIC)*/
+					is_deferrable_inline_function(func)) {
 					/*
 					 * 03/01/09: Don't generate inline function
 					 * definitions before the end of the program.
@@ -735,10 +748,14 @@ skip_fdef:
 			for (func = funclist; func != NULL; func = func->next) {
 				curscope = &global_scope;
 
-				if (IS_INLINE(func->proto->dtype->flags) &&
+				if (is_deferrable_inline_function(func)
+					&& func->proto->references > 0) {
+
+					/*IS_INLINE(func->proto->dtype->flags) &&
 					(func->proto->dtype->storage == TOK_KEY_EXTERN
 					|| func->proto->dtype->storage == TOK_KEY_STATIC)
-					&& func->proto->references > 0) {
+					&& func->proto->references > 0) { */
+
 					allow_vreg_map_preg();
 					xlate_func_to_icode(func);
 					forbid_vreg_map_preg();

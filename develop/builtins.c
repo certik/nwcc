@@ -1539,6 +1539,9 @@ amd64_builtin_next_arg_to_icode(
 }
 
 
+#define DEBUG_VA_ARG_TO_ICODE 0
+
+
 static struct vreg *
 amd64_builtin_va_arg_to_icode(
 	struct fcall_data *fdat,
@@ -1580,6 +1583,9 @@ amd64_builtin_va_arg_to_icode(
 	 *
 	 * ... didn't work because *foo was not loaded
 	 */
+	
+	if (DEBUG_VA_ARG_TO_ICODE && il) icode_make_debug(il, "computing va_arg expression");
+
 	valist_vr = expr_to_icode(fdat->builtin->args[0], NULL, il, 0, 0, eval);
 	if (valist_vr == NULL) {
 		return NULL;
@@ -1725,11 +1731,13 @@ amd64_builtin_va_arg_to_icode(
 		long_size = 48; /* 48 gpr bytes */
 	}
 
+	if (DEBUG_VA_ARG_TO_ICODE) icode_make_debug(il, "reading offset");
 	vreg_faultin(NULL, NULL, /*gp_offset->vreg*/offset_vreg, il, 0);
 	fe_const = const_from_value(&long_size, make_basic_type(TY_LONG));
 	limit_vreg = vreg_alloc(NULL, fe_const, NULL, NULL);
 	vreg_faultin(NULL, NULL, limit_vreg, il, 0);
 
+	if (DEBUG_VA_ARG_TO_ICODE) icode_make_debug(il, "offset = limit?");
 	ii = icode_make_cmp(/*gp_offset->vreg*/offset_vreg, limit_vreg);
 	append_icode_list(il, ii);
 
@@ -1741,15 +1749,18 @@ amd64_builtin_va_arg_to_icode(
 	append_icode_list(il, ii);
 
 	/* offset is below 48 - use register save area */ 
+	if (DEBUG_VA_ARG_TO_ICODE) icode_make_debug(il, "offset < limit - using reg save area");
 	vreg_faultin(r, NULL, reg_save_area_vreg, il, 0);
 	ii = icode_make_add(reg_save_area_vreg, offset_vreg);
 	append_icode_list(il, ii);
 	append_icode_list(il, icode_make_jump(label2));
 
+
 	append_icode_list(il, label);
 
 	/* offset is 48 - use overflow area */
 
+	if (DEBUG_VA_ARG_TO_ICODE) icode_make_debug(il, "offset = limit - using overflow area");
 	vreg_faultin(r, NULL, overflow_arg_area_vreg, il, 0);
 	append_icode_list(il, label2);
 	vreg_map_preg(pointer, r);
@@ -1769,12 +1780,14 @@ amd64_builtin_va_arg_to_icode(
 	vreg_set_new_type(vr, fdat->builtin->args[1]);
 	size = vr->size;
 
+	if (DEBUG_VA_ARG_TO_ICODE) icode_make_debug(il, "loading desired item");
 	vreg_faultin(NULL, NULL, vr, il, 0);
 	vreg_anonymify(&vr, NULL, NULL, il);
 
 	if (size < 8) {
 		size = 8;
 	}	
+	if (DEBUG_VA_ARG_TO_ICODE) icode_make_debug(il, "preparing to update offset");
 	c = const_from_value(&size, NULL);
 	tmpvr = vreg_alloc(NULL, c, NULL, NULL);
 	vreg_faultin(NULL, NULL, tmpvr, il, 0);
@@ -1790,6 +1803,7 @@ amd64_builtin_va_arg_to_icode(
 	append_icode_list(il, ii);
 
 	/* offset is below 48/112 - use register save area */ 
+	if (DEBUG_VA_ARG_TO_ICODE) icode_make_debug(il, "offset < limit - using reg save area");
 	vreg_faultin_protected(offset_vreg, NULL, NULL, tmpvr, il, 0);
 	ii = icode_make_add(offset_vreg, tmpvr);
 	append_icode_list(il, ii);
@@ -1798,6 +1812,7 @@ amd64_builtin_va_arg_to_icode(
 	append_icode_list(il, label);
 
 	/* offset is 48/112 - use overflow area */
+	if (DEBUG_VA_ARG_TO_ICODE) icode_make_debug(il, "offset = limit - using overflow area");
 	vreg_faultin(NULL, NULL, overflow_arg_area_vreg, il, 0);
 	vreg_faultin(NULL, NULL, tmpvr, il, 0);
 	ii = icode_make_add(overflow_arg_area_vreg, tmpvr);
@@ -2221,11 +2236,13 @@ static const struct {
 }; 
 
 
+#define BUILTIN_TABSIZE	128
+
 static struct renamed_entry {
 	char			*name;
 	struct renamed_entry	*next;
-} *renamed_head[128],
-  *renamed_tail[128];
+} *renamed_head[BUILTIN_TABSIZE],
+  *renamed_tail[BUILTIN_TABSIZE];
 
 static unsigned int
 hash_builtin(const char *name) {
@@ -2234,7 +2251,7 @@ hash_builtin(const char *name) {
 	for (; *name != 0; ++name) {
 		key = key * 33 + *name;
 	}
-	return key & 127;
+	return key & (BUILTIN_TABSIZE - 1);
 }
 
 static void

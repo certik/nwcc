@@ -3088,6 +3088,7 @@ struct emitter x86_emit_nasm = {
 	emit_static_uninit_thread_vars,
 	emit_struct_defs,
 	emit_comment,
+	NULL, /* emit_debug */
 	emit_dwarf2_line,
 	emit_dwarf2_files,
 	emit_inlineasm,

@@ -920,6 +920,27 @@ fp_const_from_ascii(const char *value, int type) {
 	return ret;
 }
 
+
+struct token *
+const_from_string(const char *value) {
+	struct token		*ret = alloc_token();
+	struct type		*ty;
+	struct ty_string        *tmpstr;
+	
+	tmpstr = alloc_ty_string();
+	tmpstr->size = strlen(value) + 1;
+	tmpstr->str = n_xmemdup(value, tmpstr->size);
+	tmpstr->is_wide_char = 0;
+
+	ret->type = TOK_STRING_LITERAL;
+	ty = make_array_type(tmpstr->size, tmpstr->is_wide_char);
+	tmpstr->ty = ty;
+
+	ret->data = tmpstr;
+	return ret;
+}
+
+
 int
 is_integral_type(struct type *t) {
 	if (t->tlist != NULL) {

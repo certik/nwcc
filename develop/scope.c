@@ -305,12 +305,41 @@ update_array_size(struct decl *d, struct type *ty) {
 	}
 }
 
+
+static void
+remove_old_declaration(struct scope *s, struct sym_entry *se, struct decl *d, struct decl *newdec) {
+	/*
+	 * 03/29/08: Also remove the declaration if it is
+	 * first extern, then not extern (so it suddenly
+	 * requires a definition)
+	 */
+	se->dec->invalid = 1;
+
+	/*
+	 * 03/30/08: Save reference count (code may already
+	 * have accessed the previous declaration)
+	 */
+	newdec->references = d->references;
+	newdec->real_references = d->real_references; /* 12/24/08 */
+	remove_symlist(s, se);
+}
+
+
+/*
+ * 20141114: Quickfix hack to communicate to caller of check_redef that an inline declaration was dropped,
+ * so that a new declaration needs to be stored in scope.
+ * XXX All of this symbol management is insanely incomprehensible
+ */
+static int dropped_inline_decl;
+
+
 static int
-check_redef(struct scope *s, struct decl *newdec, int *need_def) {
+check_redef(struct scope *s, struct dec_block *destdec, struct decl *newdec, int *need_def) {
 	struct decl		*d;
 	struct type		*ty = newdec->dtype;
 	struct sym_entry	*se;
 
+	dropped_inline_decl = 0;
 #if 0
 	if ((d = lookup_symbol(s, ty->name, 0)) == NULL) {
 		return 0;
@@ -387,6 +416,31 @@ check_redef(struct scope *s, struct decl *newdec, int *need_def) {
 			if (compres != -1) {
 				/*
 				 * Yes, storage is only difference
+				 */
+				if (IS_INLINE(d->dtype->flags)) {
+					/*
+					 * 20141114: For inline functions, we need to
+					 * remove the preceding declaration.
+					 *
+					 * Otherwise, in
+					 *   inline void foo();
+					 *   inline void foo() {}
+					 * ... references (by function calls) to foo
+					 *  may be recorded for the first decl. This
+					 * will cause the function definition to be
+					 * suppressed and result in linker errors
+				 	 * (see is_deferrable_inline_function())
+				 	 *
+					 * This fixes compiler errors for some GNU
+					 * programs (m4, tar), but it's not
+					 * guaranteed that it is correct in all
+					 * possible cases.
+					 */
+					dropped_inline_decl = 1;
+					remove_old_declaration(s, se, d, newdec);
+				}
+
+				/*
 				 *
 				 * XXX symbol management is almost
 				 * certainly wrong, and will cause
@@ -518,20 +572,7 @@ check_redef(struct scope *s, struct decl *newdec, int *need_def) {
 			|| is_extern_inline
 			|| is_static_inline) {
 
-			/*
-			 * 03/29/08: Also remove the declaration if it is
-			 * first extern, then not extern (so it suddenly
-			 * requires a definition)
-			 */
-			se->dec->invalid = 1;
-			/*
-			 * 03/30/08: Save reference count (code may already
-			 * have accessed the previous declaration)
-			 */
-			newdec->references = d->references;
-			newdec->real_references = d->real_references; /* 12/24/08 */
-			remove_symlist(s, se);
-
+			remove_old_declaration(s, se, d, newdec);
 			return 0;
 		}
 
@@ -872,7 +913,7 @@ store_decl_scope(struct scope *s, struct decl **dec) {
 				 * redefinition 
 				 */
 				int	need_def;
-				int	rc = check_redef(s, dec[i], &need_def);
+				int	rc = check_redef(s, destdec, dec[i], &need_def);
 				
 				if (watchvar && strcmp(t->name, watchvar) == 0) {
 					debug_output = 1;
@@ -947,7 +988,9 @@ if (debug_output) {
 	printf("               %s NOT Writing definition! (extern or tentative)\n",
 		watchvar);
 }
-						continue;
+						if (!dropped_inline_decl) {
+							continue;
+						}
 					}
 
 					/*
@@ -955,8 +998,10 @@ if (debug_output) {
 					 * declaration which also requires a
 					 * definition. 
 					 */
-					if (dec[i]->init == NULL) {
-						continue;
+					if (!dropped_inline_decl) {
+						if (dec[i]->init == NULL) {
+							continue;
+						}
 					}
 					dec[i]->has_def = 1;
 				} else if (rc == -1) {
@@ -967,9 +1012,9 @@ if (debug_output) {
 			}
 
 
-			if (s->type == SCOPE_CODE
+			if (!dropped_inline_decl      &&    (s->type == SCOPE_CODE
 				&& (t->storage == TOK_KEY_EXTERN
-				|| t->is_func
+				|| t->is_func)
 				/*	&& t->is_def*/
 			/*		&& t->storage != TOK_KEY_STATIC
 					&& t->tlist->type == TN_FUNCTION*/)) {
@@ -1366,7 +1411,7 @@ if (debug_output) {
 				}
 			}
 			do_store_decl(s, destdec, dec[i]);
-		}
+		} 
 	}
 }
 

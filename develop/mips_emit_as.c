@@ -2577,6 +2577,7 @@ struct emitter mips_emit_as = {
 
 	emit_struct_defs,
 	emit_comment,
+	NULL, /* emit_debug */
 	NULL, /* emit_dwarf2_line */
 	NULL, /* emit_dwarf2_files */
 	emit_inlineasm,
