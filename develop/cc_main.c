@@ -122,8 +122,17 @@ usage(void) {
 static void
 print_version(void) {
 	printf("nwcc %s\n", NWCC_VERSION);
-	printf("Copyright (c) 2003 - 2011 "
+	printf("Copyright (c) 2003 - 2014 "
 		"Nils Robert Weller\n");
+	/*
+	 * 2014116: If we define the __GNUC__ macro, "nwcc -v" should also contain the text
+	 * "gcc version <version>" because some configure scripts (glibc) check for this
+	 * (the user needs to set the macro to a suitable three digit version number in this
+	 * case)
+	 */
+	if (notgnu_flag == 0 && getenv("NWCC_DEFINE_GNUC_MACRO") != NULL) {
+		printf("Pretending to be gcc version %s\n", getenv("NWCC_DEFINE_GNUC_MACRO"));
+	}
 }
 
 static void
@@ -373,6 +382,9 @@ main(int argc, char *argv[]) {
 			}
 			fclose(fd);
 		}
+	}
+	if (getenv("NWCC_DEFINE_GNUC_MACRO") != NULL) {
+		notgnu_flag = 0;	
 	}
 
 	while ((ch = nw_get_arg(argc-1, argv+1, options, nopts, &idx)) != -1) {

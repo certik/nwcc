@@ -705,10 +705,11 @@ get_base_type(struct token **curtok, int type) {
 					return NULL;
 				}
 			} else {
+				struct ty_enum	*te;
+
 				/* TY_ENUM */
 				if (tok->type == TOK_COMP_OPEN) {
 					/* This has got to be a definition */
-					struct ty_enum	*te;
 					if (next_token(&tok) != 0) {
 						free(ty);
 						return NULL;
@@ -730,17 +731,23 @@ get_base_type(struct token **curtok, int type) {
 					if ((ty->tenum =
 						lookup_enum(curscope, tag, 1))
 						== NULL) {
-						/* Handle error */
-						errorfl(tok, "Undefined enum"
+						/*
+						 * 20141115: Use of undefined enums is
+						 * now no longer an error (we need this
+						 * to build GNU bison and produce a
+						 * forward declaration of sorts to do so)
+						 */
+						warningfl(tok, "Use of undefined enum is not allowed in ISO C"
 							" `%s'", tag);
-						free(ty);
-						return NULL;
+						
+						te = create_enum_forward_declaration(tag);
+						store_def_scope(curscope, NULL, te, tok);
 					}
 				} else {
-					errorfl(tok, "Forward declarations of "
-						"enumerations not allowed");
-					free(ty);
-					return NULL;
+					warningfl(tok, "Forward declarations of "
+						"enumerations are not allowed in ISO C");
+					te = create_enum_forward_declaration(tag);
+					store_def_scope(curscope, NULL, te, tok);
 				}
 			}
 

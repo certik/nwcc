@@ -187,7 +187,11 @@ struct ty_enum {
 		char		*name;
 		struct decl	*dec;
 		struct token	*value;
-	}    *members;
+	}    *members; /* XXX nwcc allows empty enum definitions, which is probably illegal */
+	/*
+	 * 20141115: Flag to signal forward declaration/reference of undefined enum
+	 */
+	int	is_forward_decl;
 	int	 nmemb;
 };
 

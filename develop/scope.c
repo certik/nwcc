@@ -1433,6 +1433,15 @@ complete_type(struct ty_struct *oldts, struct ty_struct *ts) {
 		oldrefs + ts->references;
 }					
 
+struct ty_enum *
+create_enum_forward_declaration(const char *tag) {
+	struct ty_enum	*ret = alloc_ty_enum();
+	ret->tag = (char *)tag;
+	ret->is_forward_decl = 1;
+	return ret;
+}
+
+
 /*
  * Stores structure or enum definition (not instance!) in current scope.
  * If ts is not a null pointer, it will be stored. Otherwise, te will be
@@ -1527,18 +1536,25 @@ store_def_scope(struct scope *sc,
 		if (te->tag != NULL) {
 			/*
 			 * Check whether we have a multiple definition error.
-			 * It is not necessary to check for incomplete types,
-			 * as with structures, because enum forward references
-			 * are invalid (XXX might be implemented as extension
-			 * later)
+			 * 20141116: We now support enum forward declarations
+			 * as an extension to ISO C (this makes GNU bison compile)
 			 */
 			for (i = 0; i < e->ndecls; ++i) {
 				p = e->data[i]->tag;
 				if (p && strcmp(p, te->tag) == 0) {
-					errorfl(tok,
-						"Multiple definitions of "
-						"enum `%s'", p);
-					return;
+					if (e->data[i]->is_forward_decl) {
+						/*
+						 * We already have a slot in which to store
+						 * this definition because a forward
+						 * declaration has taken place
+						 */
+						e->data[i] = te;
+						return;
+					} else {
+						errorfl(tok,
+							"Multiple definitions of enum `%s'", p);
+						return;
+					}
 				}
 			}
 			if (lookup_struct(sc, te->tag, 0) != NULL) {

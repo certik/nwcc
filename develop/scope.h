@@ -155,6 +155,8 @@ lookup_struct(struct scope *s, const char *tag, int nested);
 struct ty_enum *
 lookup_enum(struct scope *s, const char *tag, int nested);
 
+struct ty_enum *
+create_enum_forward_declaration(const char *tag);
 
 #define LTD_IGNORE_IDENT	1
 

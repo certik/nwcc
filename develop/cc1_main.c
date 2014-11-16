@@ -358,6 +358,19 @@ do_cpp(char *file, char **args, int cppind) {
 
 	if (gnuheadersflag && stdflag != ISTD_C89 && !notgnu_flag) {
 		if (host_sys == OS_LINUX) {
+			/*
+			 * 20141114: The __GNUC__ version we pretend to support can
+			 * now be specified by using an environment variable
+			 */
+			static char	version_buffer[] = "-D__GNUC__=X";
+			const char 	*envvar = getenv("NWCC_DEFINE_GNUC_MACRO");
+			int		version = '3';
+
+			if (envvar != NULL && isdigit((unsigned char)*envvar)) {
+				version = *envvar;
+			}
+			*strchr(version_buffer, 'X') = version;
+
 #ifdef GNUBYDEFAULT
 			/*
 			 * 07/01/07: Because the major()/minor() macros on my
@@ -378,10 +391,11 @@ do_cpp(char *file, char **args, int cppind) {
 #if 0
 		gnooh = " -U__GNUC__ -D__GNUC__=3 "; /* was 1 , then 2 !!! */
 #endif
+
 			gnooh = "-U__GNUC__"; /* was 1 , then 2 !!! */
-			gnooh2 = "-D__GNUC__=3 "; /* was 1 , then 2 !!! */
+			gnooh2 = version_buffer; /* was 1 , then 2 !!! */
 #else
-			gnooh = " -D__GNUC__=3 "; /* was 1, then 2 !!! */
+			gnooh = version_buffer; /* was 1, then 2 !!! */
 			gnooh2 = "";
 #endif
 			if (using_nwcpp) {
@@ -565,9 +579,9 @@ do_ncc(char *cppfile, char *nccfile, int is_tmpfile) {
 		zalloc_init(Z_ICODE_INSTR, sizeof(struct icode_instr), 1, 0);
 		zalloc_init(Z_ICODE_LIST, sizeof(struct icode_list), 1, 0);
 		zalloc_init(Z_VREG, sizeof(struct vreg), 1, 0);
-	zalloc_init(Z_STACK_BLOCK, sizeof(struct stack_block), 1, 0);
-	zalloc_init(Z_S_EXPR, sizeof(struct s_expr), 1, 0);
-	zalloc_init(Z_FCALL_DATA, sizeof(struct fcall_data), 1, 0);
+		zalloc_init(Z_STACK_BLOCK, sizeof(struct stack_block), 1, 0);
+		zalloc_init(Z_S_EXPR, sizeof(struct s_expr), 1, 0);
+		zalloc_init(Z_FCALL_DATA, sizeof(struct fcall_data), 1, 0);
 /*	zalloc_init(Z_IDENTIFIER, sizeof(struct control), 1);*/
 #if FAST_SYMBOL_LOOKUP
 	zalloc_init(Z_FASTSYMHASH, sizeof(struct fast_sym_hash_entry), 1, 0);
