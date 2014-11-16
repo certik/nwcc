@@ -186,17 +186,6 @@ append_ty_string(
 	return 0;
 }
 
-#if 0
-static int
-get_next_char(FILE *fd) {
-	int	ch = getc(fd);
-	if (ch == '\n') {
-		lex_line_ptr = lex_file_map + lex_chars_read;
-		err_setlineptr(lex_line_ptr);
-	}
-	return ch;
-}
-#endif
 
 static int	store_char_index		= 0;
 
@@ -354,7 +343,7 @@ get_escape_sequence(const char *s, int type, int *badseq) {
  */
 int 
 #ifndef PREPROCESSOR
-get_trigraph(FILE *f) {
+get_trigraph(struct input_file *f) {
 #else
 get_trigraph(struct input_file *f) {
 #endif
@@ -413,7 +402,7 @@ get_trigraph(struct input_file *f) {
  */
 int 
 #ifndef PREPROCESSOR
-get_char_literal(FILE *inf, int *err) {
+get_char_literal(struct input_file *inf, int *err) {
 #else
 get_char_literal(struct input_file *inf, int *err, char **text) {
 #endif
@@ -548,6 +537,7 @@ is_part_of_constant(int code, int type) {
 	return 0;
 }
 
+
 /*
  * Reads string literal from stream f and returns a dynamically
  * allocated string as result. Must be called AFTER the opening
@@ -556,7 +546,7 @@ is_part_of_constant(int code, int type) {
  */
 struct ty_string *
 #ifndef PREPROCESSOR
-get_string_literal(FILE *f, int is_wide_char) {
+get_string_literal(struct input_file *f, int is_wide_char) {
 #else
 get_string_literal(struct input_file *f) {
 #endif
@@ -739,7 +729,7 @@ do_get_operator(char *op, char **ascii) {
  */
 int	
 #ifndef PREPROCESSOR
-get_operator(int ch, FILE *f, char **ascii) {
+get_operator(int ch, struct input_file *f, char **ascii) {
 #else
 get_operator(int ch, struct input_file *f, char **ascii) {
 #endif
@@ -824,7 +814,22 @@ rv_setrc_print(void *ptr, int type, int verbose) {
 		printf("%s %Lf\n",
 			verbose?"Read long double":"", *(long double *)ptr);
 	}
+#elif USE_UCPP
+	/* XXX not cross-compilation clean */
+	if (type == TY_FLOAT) {
+		struct ty_float	*tf = ptr;
+		printf("%f", *(float *)tf->num->value);
+	} else if (type == TY_DOUBLE) {
+		struct ty_float	*tf = ptr;
+		printf("%f", *(double *)tf->num->value);
+	} else if (type == TY_LDOUBLE) {
+		struct ty_float	*tf = ptr;
+		printf("%Lf", *(long double *)tf->num->value);
+	} else {
+		cross_print_value_by_type(stdout, ptr, type, 'd');
+	}
 #endif
+
 }
 
 
@@ -953,6 +958,157 @@ parse_hexfloat_const(struct num *ret, char *textval, char *bin_exp) {
 
 	return 0;
 }	
+
+
+
+static struct num *
+complete_num_literal(char *p, char *bin_exp, int digits_read, int octal_flag, int hexa_flag, int fp_flag, int float_flag, int hex_float, int bin_exp_idx,  int long_flag, int unsigned_flag) {
+	int		real_type;
+	struct num	*rc;
+
+	if (digits_read == 0 && !octal_flag && !fp_flag) {
+		lexerror("Constant with no digits");
+	} else if (fp_flag == 0) {
+		/* 
+		 * Perform range check, adjust type of
+		 * constant as needed
+		 */
+		real_type = range_check(p, hexa_flag,
+			octal_flag, unsigned_flag, long_flag,
+			digits_read);
+		if (real_type == -1) {
+			free(p);
+			return NULL;
+		} else if (real_type != 0)  {
+			/* 0 means unchanged */
+			if (IS_LLONG(real_type)
+				&& long_flag != 2) {
+				/*
+				 * The number wasn't requested
+				 * to be of type ``long long'',
+				 * but has to be! This may not
+				 * be intended
+				 */
+				lexwarning("Number `%s' is too "
+					"large for `unsigned "
+					"long'", p);
+			}	
+			if (real_type == TY_ULONG
+				|| real_type == TY_ULLONG
+				|| real_type == TY_UINT) {
+				unsigned_flag = 1;
+			}
+			if (real_type == TY_LONG
+				|| real_type == TY_ULONG) {
+				long_flag = 1;
+			} else if (real_type == TY_LLONG
+				|| real_type == TY_ULLONG) {
+				long_flag = 2;
+			}
+		} else {
+			/*
+			 * The user-specified type is
+			 * sufficient
+			 */
+			if (unsigned_flag) {
+				if (long_flag == 1) {
+					real_type = TY_ULONG;
+				} else if (long_flag == 2) {
+					real_type = TY_ULLONG;
+				} else {
+					real_type = TY_UINT;
+				}
+			} else {
+				/* signed */
+				if (long_flag == 1) {
+					real_type = TY_LONG;
+				} else if (long_flag == 2) {
+					real_type = TY_LLONG;
+				} else {
+					real_type = TY_INT;
+				}
+			}
+		}	
+	} else {
+		/* Floating point */
+		if (float_flag) {
+			real_type = TY_FLOAT;
+		} else if (long_flag) {
+			real_type = TY_LDOUBLE;
+		} else {
+			real_type = TY_DOUBLE;
+		}	
+	}	
+
+	if (hex_float) {
+		if (bin_exp_idx == 0) {
+			lexerror("Hexadecimal floating point "
+				"constant misses exponent");
+			return NULL;
+		}
+					
+		rc = n_xmalloc(sizeof *rc);
+#ifndef PREPROCESSOR
+		rc->value = n_xmalloc(backend->get_sizeof_type(
+			make_basic_type(real_type), NULL));
+#else
+		rc->value = n_xmalloc(cross_get_sizeof_type(
+			make_basic_type(real_type)));
+#endif
+		bin_exp[bin_exp_idx] = 0;
+		rc->type = real_type;
+#ifndef PREPROCESSOR
+		if (parse_hexfloat_const(rc, p, bin_exp) == 0) {
+			put_float_const_list(rc);
+		}
+#endif
+	} else {	
+		rc = cross_scan_value(p, real_type,
+			hexa_flag, octal_flag, fp_flag);
+	}
+#ifdef DEBUG
+	printf("(%d digits)\n", digits_read);
+#endif
+	if (fp_flag /*&& backend->need_floatconst*/) {
+#if 0
+		struct ty_float		*fc;
+		static unsigned long	count;
+
+		fc = n_xmalloc(sizeof *fc);
+		fc->count = count++;
+		fc->num = rc;
+		fc->next = float_const;
+		float_const = fc;
+#endif
+#ifndef PREPROCESSOR
+	} else if (long_flag
+		&& backend->abi == ABI_POWER64) {
+		/* 64bit native long long/long! */
+		put_ppc_llong(rc);
+#endif
+	}
+
+#ifdef PREPROCESSOR
+	rc->ascii = p;
+#endif
+	if (IS_LLONG(real_type)) {
+		static int warned;
+		if (!warned) {
+			if (stdflag == ISTD_C89) {
+				lexwarning("ISO C90 has "
+				"no `long long' constants "
+				"(suppressing further "
+				"warnings of this kind)");
+				warned = 1;
+			}
+		}
+	}
+
+	return rc;
+}
+
+
+
 /*
  * Reads a numeric literal from stream f and returns a pointer to
  * a dynamically allocated ``struct num'' containing its value and
@@ -965,7 +1121,7 @@ parse_hexfloat_const(struct num *ret, char *textval, char *bin_exp) {
  */ 
 struct num *
 #ifndef PREPROCESSOR
-get_num_literal(int firstch, FILE *f) {
+get_num_literal(int firstch, struct input_file *f) {
 #else
 get_num_literal(int firstch, struct input_file *f) {
 #endif
@@ -1175,6 +1331,10 @@ get_num_literal(int firstch, struct input_file *f) {
 			store_char(&p, 0);
 			UNGETC(ch, f);
 
+
+			return complete_num_literal(p, bin_exp, digits_read, octal_flag, hexa_flag, fp_flag, float_flag, hex_float, bin_exp_idx, long_flag, unsigned_flag);
+
+#if 0
 			if (digits_read == 0 && !octal_flag && !fp_flag) {
 				lexerror("Constant with no digits");
 			} else if (fp_flag == 0) {
@@ -1249,43 +1409,6 @@ get_num_literal(int firstch, struct input_file *f) {
 				}	
 			}	
 
-#if 0  /* 07/15/09: This kludge now disabled completely; We use long double
-	* double emulation on MIPS as well now
-	*/
-#ifndef PREPROCESSOR
-			if (backend->arch == ARCH_MIPS
-				|| backend->arch == ARCH_POWER) {
-#else
-			if (target_info->arch_info->arch == ARCH_MIPS
-				|| target_info->arch_info->arch == ARCH_POWER) {
-#endif
-				/*
-				 * XXX MIPS/PPC kludge. This means there
-				 * is also no correct typechecking for
-				 * double vs long double!
-				 */
-				/*
-				 * 11/13/08: Don't do this kludge on
-				 * non-AIX PPC systems (i.e. Linux where
-				 * long double is 128 bits
-				 * XXX P.S. Do we even need this on AIX,
-				 * where double and long double are the 
-				 * same anyway?
-				 */
-#ifndef PREPROCESSOR
-				if (sysflag == OS_AIX || backend->arch != ARCH_POWER) {
-#else
-				if (sysflag == OS_AIX
-					|| target_info->arch_info->arch != ARCH_POWER) {
-#endif
-					if (fp_flag && long_flag) {
-						/* long double becomes double */
-						real_type = TY_DOUBLE;
-					}
-				}
-			}	
-#endif
-
 			if (hex_float) {
 				if (bin_exp_idx == 0) {
 					lexerror("Hexadecimal floating point "
@@ -1349,13 +1472,14 @@ get_num_literal(int firstch, struct input_file *f) {
 					}
 				}
 			}
+
 			return rc;
+#endif
 		}
 	}
 
-	lexerror("Unexpected end of file - expected end of numeric constant.");
-	if (p) free(p);
-	return NULL;
+	store_char(&p, 0);
+	return complete_num_literal(p, bin_exp, digits_read, octal_flag, hexa_flag, fp_flag, float_flag, hex_float, bin_exp_idx, long_flag, unsigned_flag);
 }
 
 /*
@@ -1367,7 +1491,7 @@ get_num_literal(int firstch, struct input_file *f) {
  */
 char *
 #ifndef PREPROCESSOR
-get_identifier(int ch, FILE *f) {
+get_identifier(int ch, struct input_file *f) {
 #else
 get_identifier(int ch, struct input_file *f, int *slen, int *hash_key) {
 #endif
@@ -1414,8 +1538,16 @@ get_identifier(int ch, struct input_file *f, int *slen, int *hash_key) {
 		}
 	}
 
-	lexerror("Unexpected end of file - expected termination of identifier.");
-	return NULL;
+
+	store_char(&p, 0);
+#ifdef DEBUG
+	printf("Read identifier ``%s''\n", p);
+#endif
+#ifdef PREPROCESSOR
+	*hash_key = key;
+	*slen = len;
+#endif
+	return p;
 }
 
 
@@ -1575,7 +1707,6 @@ store_token(struct token **dest,
 	struct token		*ret = NULL;
 	static struct token	*cur;
 
-
 #if 0
 printf("                                  line %d ... \r ", linenum);	
 #endif
@@ -1594,6 +1725,14 @@ printf("                                  line %d ... \r ", linenum);
 		cur = t;
 
 		ret = t;
+
+		if (type == TOK_STRING_LITERAL) {
+			struct ty_string	*newstr = data;
+			struct type		*ty;
+
+			ty = make_array_type(newstr->size, newstr->is_wide_char);
+			newstr->ty = ty;
+		}
 	} else {
 #ifdef PREPROCESSOR
 		(*dest_tail)->next = alloc_token();
@@ -1799,7 +1938,6 @@ printf("                                  line %d ... \r ", linenum);
 		}
 	}
 #endif
-
 	return ret;
 }
 

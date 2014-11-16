@@ -153,6 +153,11 @@ for i in "$@"; do
 		# The -uncolor option can be used to disable them if the
 		# default is to enable it
 		echo '#define CONF_COLOR_OUTPUT 1' >> config.h
+	elif test "$FIRST" = "--use-ucpp"; then
+		# 20141116: Use ucpp preprocessor (experimental)
+		echo '#define USE_UCPP 1' >>config.h
+		USEUCPP=yes
+		CPPDIR=ucpp
 	else
 		if test "$FIRST" != "--help"; then
 			echo "Unknown option \"$FIRST\""
@@ -184,6 +189,12 @@ for i in "$@"; do
 		exit 1
 	fi	
 done
+
+if test "$CPPDIR" != ucpp; then
+	CPPDIR="cpp"
+fi
+
+echo "    Setting CPPDIR to $CPPDIR"
 
 # Now we get the compiler if CC is not set. It's important to use a prototype
 # for main and also the ``const'' keyword to rule out K&R compilers
@@ -574,13 +585,23 @@ fi
 # 	mv Makefile Make.old
 # fi
 
+if test "$USEUCPP" = yes; then
+	CFLAGS="$CFLAGS -Iucpp"
+fi
+
 echo "CC=$CC" >Makefile
 echo "CFLAGS+=$CFLAGS" >>Makefile
 echo "PICFLAGS=$PICFLAGS" >>Makefile
 echo "ABI=$ABI" >>Makefile
+echo "CPPDIR=$CPPDIR" >>Makefile
 if test "$NOCPP" != yes; then
-	echo "BUILDCPP=cpp" >>Makefile
-fi	
+	if test "$USEUCPP" = yes; then
+		echo "BUILDCPP=ucpp" >>Makefile
+		echo "UCPPOBJ=ucpp/assert.o ucpp/cpp.o ucpp/eval.o ucpp/lexer.o ucpp/macro.o ucpp/mem.o ucpp/nhash.o" >>Makefile
+	else
+		echo "BUILDCPP=cpp" >>Makefile
+	fi
+fi
 
 # 12/07/24: Import settings for preprocessor as well (why wasn't this done
 # earlier?!)

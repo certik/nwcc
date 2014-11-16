@@ -118,7 +118,7 @@ fcat_write_index_file(const char *dest, const char *src) {
 		return -1;
 	}
 
-	if (lex(srcfd) != 0) {
+	if (lex_nwcc(create_input_file(srcfd)) != 0) {
 		(void) fprintf(stderr, "ERROR: Cannot lex function catalogue file\n");
 		return -1;
 	}
@@ -508,7 +508,7 @@ fcat_lookup_builtin_decl(const char *name, char **header, int standard) {
 
 
 			doing_fcatalog = 1;
-			rc = lex(fd);
+			rc = lex_nwcc(create_input_file(fd));
 
 			unlink(fname);
 

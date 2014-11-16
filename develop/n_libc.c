@@ -67,6 +67,7 @@ void *
 
 	if ((ret = realloc(block, nbytes)) == NULL) {
 		perror("realloc");
+abort();
 		exit(EXIT_FAILURE);
 	}
 	return ret;

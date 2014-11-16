@@ -41,6 +41,7 @@ icode.o \
 icodeinstr.o \
 inlineasm.o \
 lex.o \
+lex_ucpp.o \
 libnwcc.o \
 n_libc.o \
 mips_emit_as.o \
@@ -76,13 +77,13 @@ sweeper.o
 
 
 all:
-	make nwcc $(BUILDCPP)
+	make $(BUILDCPP) nwcc
 
-nwcc: $(CCOBJ) $(CC1OBJ) $(SNAKEOBJ) $(SWEEPEROBJ) libnwcc.o
+nwcc: $(CCOBJ) $(CC1OBJ) $(SNAKEOBJ) $(SWEEPEROBJ) $(UCPPOBJ) libnwcc.o
 	$(CC) $(CFLAGS) -DEXTERNAL_USE libnwcc.c -c -o extlibnwcc.o
 	$(CC) $(CFLAGS) $(PICFLAGS) -DEXTERNAL_USE libnwcc.c -c -o dynextlibnwcc.o
 	$(CC) $(CFLAGS) $(CCOBJ) -o nwcc $(LDFLAGS)
-	$(CC) $(CFLAGS) $(CC1OBJ) -o nwcc1 $(LDFLAGS)
+	$(CC) $(CFLAGS) $(CC1OBJ) $(UCPPOBJ) -o nwcc1 $(LDFLAGS)
 	$(CC) $(CFLAGS) $(SNAKEOBJ) -o snake -lpthread
 	$(CC) $(CFLAGS) $(SWEEPEROBJ) -o sweeper
 	make $(BUILDCPP)
@@ -98,9 +99,11 @@ nwcc: $(CCOBJ) $(CC1OBJ) $(SNAKEOBJ) $(SWEEPEROBJ) libnwcc.o
 
 cpp: .jnkcpp
 	@rm -f .jnkcpp
+ucpp: .jnkcpp
+	@rm -f .jnkcpp
 
 .jnkcpp:
-	@(touch .jnkcpp; cd cpp; make)
+	@(touch .jnkcpp; cd $(CPPDIR); make)
 
 install:
 	./install.sh
@@ -188,6 +191,9 @@ inlineasm.o: inlineasm.c inlineasm.h
 
 lex.o: lex.c lex.h
 	$(CC) $(CFLAGS) lex.c -c
+
+lex_ucpp.o: lex_ucpp.c lex_ucpp.h
+	$(CC) $(CFLAGS) lex_ucpp.c -c
 
 libnwcc.o: libnwcc.c
 	$(CC) $(CFLAGS) libnwcc.c -c
@@ -277,7 +283,7 @@ sweeper.o: sweeper.c
 	$(CC) $(CFLAGS) sweeper.c -c
 
 clean:
-	(cd cpp && make clean)
+	(cd $(CPPDIR) && make clean)
 	@rm -f .jnkcpp
 	rm -rf dynextlibnwcc.o extlibnwcc.o $(CCOBJ) $(CC1OBJ) $(SNAKEOBJ) nwcc nwcc1 snake
 

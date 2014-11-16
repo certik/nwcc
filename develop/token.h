@@ -408,25 +408,23 @@ extern char	*lex_line_ptr;
 extern char	*lex_tok_ptr;
 
 
-#ifdef PREPROCESSOR
+/* 
+ * 20141116: Dummy input_file for nwcc (this will cause errors if used in nwcpp)
+ */
+struct input_file {
+	FILE	*fd;
+
+	char	*buf;
+	char	*cur_buf_ptr;
+	char	*buf_end;
+};
 
 #define FGETC(file) \
         (++lex_chars_read, \
         get_next_char(file))
 
 #define UNGETC(ch, file) \
-        (--lex_chars_read, /*ngetc((ch), (file))*/ unget_char((ch), (file)))
-
-#else
-
-#define FGETC(file) \
-	( ++lex_chars_read, \
-	get_next_char(file) )
-
-#define UNGETC(ch, file) \
-	(--lex_chars_read,  ungetc((ch), (file) ) )
-
-#endif
+        (--lex_chars_read, unget_char((ch), (file)))
 
 
 struct ty_string;
@@ -455,13 +453,13 @@ struct input_file;
  * Also in FGETC()/UNGETC(). Can we unify it?
  */
 #ifndef PREPROCESSOR
-int			get_next_char(FILE *);
-int			 get_char_literal(FILE *f, int *err);
-int 			get_trigraph(FILE *f);
-struct ty_string	*get_string_literal(FILE *f, int is_wide_char);
-int			get_operator(int ch, FILE *f, char **ascii);
-struct num		*get_num_literal(int ch, FILE *f);
-char			*get_identifier(int ch, FILE *f);
+int			get_next_char(struct input_file *);
+int			 get_char_literal(struct input_file *f, int *err);
+int 			get_trigraph(struct input_file *f);
+struct ty_string	*get_string_literal(struct input_file *f, int is_wide_char);
+int			get_operator(int ch, struct input_file *f, char **ascii);
+struct num		*get_num_literal(int ch, struct input_file *f);
+char			*get_identifier(int ch, struct input_file *f);
 #else
 int 			get_char_literal(struct input_file *inf, int *err, char **text);
 int 			get_trigraph(struct input_file *f);

@@ -29,5 +29,8 @@ extern int	color_flag;
 
 extern int	write_fcat_flag;
 
+extern int	using_ucpp;
+extern int	using_nwcpp;
+
 #endif
 

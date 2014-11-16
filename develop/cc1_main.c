@@ -85,7 +85,7 @@ char	*input_file;
 char	*asmflag;
 char	*asmname;
 char	*gnuc_version;
-char	*cpp;
+static char	*cpp_env_var;
 
 char	*custom_cpp_args;
 
@@ -117,10 +117,23 @@ int	dump_macros_flag;
 int	write_fcat_flag;
 int	save_bad_translation_unit_flag;
 
+/*
+ * 20141116: Flag to indicate whether we're using ucpp (experimental)
+ */
+int	using_ucpp;
+int	using_nwcpp;
+
+static char	*cpp_progname;
+static char	*cpp_progflag = "-E";
 
 static char *
-check_preprocessor(const char *path, const char *name, int *using_nwcpp) {
-	if (strcmp(name, "nwcpp") == 0) {
+check_preprocessor(const char *path, const char *name, int *using_nwcpp, int *using_ucpp) {
+	*using_nwcpp = 0;
+	*using_ucpp = 0;
+
+	if (strcmp(name, "ucpp") == 0) {
+		*using_ucpp = 1;
+	} else if (strcmp(name, "nwcpp") == 0) {
 		*using_nwcpp = 1;
 	} else if (strcmp(name, "cpp") == 0) {
 		; /* OK - cpp  (XXX: check system?) */
@@ -152,35 +165,23 @@ check_preprocessor(const char *path, const char *name, int *using_nwcpp) {
 	return EXIT_FAILURE; \
 } while (0)
 
-static char *
-do_cpp(char *file, char **args, int cppind) {
-	/* XXX FILENAME_MAX is broken on HP-UX */
-	static char	output_path[FILENAME_MAX + 1];
-	char		buf[FILENAME_MAX + 1];
-	char		tmpbuf[128] = "/var/tmp/cpp";
-	char		*arch;
-	char		*progname;
-	char		*progflag = "-E";
-	char		*p;
-	char		*gnooh = NULL;
-	char		*gnooh2 = NULL;
-	int		using_nwcpp = 0;
-	int		i;
-	int		host_sys;
-	FILE		*fd;
-	FILE		*fd2;
+
+
+static int
+determine_preprocessor(void) {
+	int	host_sys;
+	char	*p;
 
 	host_sys = sysdep_get_host_system();
-
 	if (sysdep_get_host_system() == OS_MIRBSD) {
-		progname = "mgcc";
+		cpp_progname = "mgcc";
 	} else {
-		progname = "gcc";
+		cpp_progname = "gcc";
 	}
 
-	if (cpp == NULL) {
-		cpp = getenv("NWCC_CPP");
-		if (cpp == NULL) {
+	if (cpp_env_var == NULL) {
+		cpp_env_var = getenv("NWCC_CPP");
+		if (cpp_env_var == NULL) {
 			/*
 			 * No user preference; We use gcc -E if available,
 			 * otherwise cpp, otherwise nwcpp. gcc comes
@@ -190,62 +191,94 @@ do_cpp(char *file, char **args, int cppind) {
 			 * nwcpp last because it's likely to be the most
 			 * buggy of all at this point :-(
 			 */
-			if (find_cmd(progname, NULL, 0) != 0) {
+			if (find_cmd(cpp_progname, NULL, 0) != 0) {
 				if (find_cmd("cpp", NULL, 0) == 0) {
-					progname = "cpp";
-					progflag = "";
+					cpp_progname = "cpp";
+					cpp_progflag = "";
 				} else {
-					progname = INSTALLDIR "/nwcc/bin/nwcpp";
-					progflag = "";
+					cpp_progname = INSTALLDIR "/nwcc/bin/nwcpp";
+					cpp_progflag = "";
 					using_nwcpp = 1;
 				}
 			} else {
-				; /* progname is already set to gcc -E */
+				; /* cpp_progname is already set to gcc -E */
 			}
 		}
 	}
-	if (cpp != NULL) {
+	if (cpp_env_var != NULL) {
 		/*
 		 * A preprocessor was selected using NWCC_CPP or
 		 * -cpp. If it begins with a slash, we take it for
 		 * an absolute path, otherwise it is presumably a
 		 * binary located in one of the $PATH directories
 		 */
-		progflag = "";
-		if (cpp[0] == '/') {
+		cpp_progflag = "";
+		if (cpp_env_var[0] == '/') {
 			struct stat	sbuf;
 
-			if (stat(cpp, &sbuf) == -1) {
+			if (stat(cpp_env_var, &sbuf) == -1) {
 				(void) fprintf(stderr, "Fatal error: "
 					"Preprocessor `%s' "
-					"not accessible\n", cpp);
-				return NULL;
+					"not accessible\n", cpp_env_var);
+				return -1;
 			}
-			progname = cpp;
-			p = strrchr(cpp, '/');
-			progname = check_preprocessor(cpp, p+1, &using_nwcpp);
-			if (progname == NULL) {
-				return NULL;
+			cpp_progname = cpp_env_var;
+			p = strrchr(cpp_env_var, '/');
+			cpp_progname = check_preprocessor(cpp_env_var, p+1, &using_nwcpp, &using_ucpp);
+			if (cpp_progname == NULL) {
+				return -1;
 			}
 		} else {
-			if (find_cmd(cpp, NULL, 0) == 0) {
-				progname = check_preprocessor(cpp, cpp, &using_nwcpp);
-				if (progname == NULL) {
-					return NULL;
+			if (find_cmd(cpp_env_var, NULL, 0) == 0) {
+				cpp_progname = check_preprocessor(cpp_env_var, cpp_env_var, &using_nwcpp, &using_ucpp);
+				if (cpp_progname == NULL) {
+					return -1;
 				}
 			} else {
-				if (strcmp(cpp, "nwcpp") == 0) {
-					progname = INSTALLDIR "/nwcc/bin/nwcpp";
+				if (strcmp(cpp_env_var, "nwcpp") == 0) {
+					cpp_progname = INSTALLDIR "/nwcc/bin/nwcpp";
 					using_nwcpp = 1;
 				} else {
 					(void) fprintf(stderr, "Fatal error: "
 						"Cannot find preprocessor "
-						"`%s' in $PATH\n", cpp);
-					return NULL;
+						"`%s' in $PATH\n", cpp_env_var);
+					return -1;
 				}
 			}
 		}
+	} else {
+		/*
+		 * 20141116: No preprocessor selected. In this case, we may use
+		 * the new experimental implementation with ucpp if nwcc was
+		 * compiled that way
+		 */
+#if USE_UCPP /* XXX This should be configurable dynamically as well */
+		using_ucpp = 1;
+#else
+		using_ucpp = 0;
+#endif
 	}
+	return 0;
+}
+
+
+
+static char *
+do_cpp(char *file, char **args, int cppind) {
+	/* XXX FILENAME_MAX is broken on HP-UX */
+	static char	output_path[FILENAME_MAX + 1];
+	char		buf[FILENAME_MAX + 1];
+	char		tmpbuf[128] = "/var/tmp/cpp";
+	char		*arch;
+	char		*p;
+	char		*gnooh = NULL;
+	char		*gnooh2 = NULL;
+	int		i;
+	int		host_sys;
+	FILE		*fd;
+	FILE		*fd2;
+
+	host_sys = sysdep_get_host_system();
 
 	/*
 	 * 03/02/09: Pass -funsigned-char/-fsigned-char so that it can pass
@@ -401,13 +434,13 @@ do_cpp(char *file, char **args, int cppind) {
 			if (using_nwcpp) {
 				gnooh = gnooh2 = ""; /* XXX */
 			}
-			fd2 = exec_cmd(0, progname, "%s %s %s%s%s%[] %s",
-				progflag,
+			fd2 = exec_cmd(0, cpp_progname, "%s %s %s%s%s%[] %s",
+				cpp_progflag,
 				"-D__NWCC__=1",
 				arch, gnooh, gnooh2, args, file);
 		} else {
-			fd2 = exec_cmd(0, progname, "%s %s %s %[] %s",
-				progflag,
+			fd2 = exec_cmd(0, cpp_progname, "%s %s %s %[] %s",
+				cpp_progflag,
 				"-D__NWCC__=1",
 				arch, args, file);
 		}
@@ -420,15 +453,15 @@ do_cpp(char *file, char **args, int cppind) {
 			 * The FreeBSD headers are worthless without __GNUC__, so
 			 * let's invoke cpp with default settings (enables __GNUC__)
 			 */
-			fd2 = exec_cmd(0, progname, "%s %s %s %s %s %[] %s",
-				progflag,
+			fd2 = exec_cmd(0, cpp_progname, "%s %s %s %s %s %[] %s",
+				cpp_progflag,
 				ansiflag? "-D__aligned\\(x\\)=": "",
 				"-D__NWCC__=1",
 				(notgnu_flag || ansiflag)? "-U__GNUC__": "",
 				arch, args, file);
 		} else {
-			fd2 = exec_cmd(0, progname, "%s %s %s %s %[] %s",
-				progflag,
+			fd2 = exec_cmd(0, cpp_progname, "%s %s %s %s %[] %s",
+				cpp_progflag,
 				"-D__NWCC__=1",
 				arch,
 				"-U__GNUC__",
@@ -559,29 +592,29 @@ do_ncc(char *cppfile, char *nccfile, int is_tmpfile) {
 	 * are needed
 	 */
 	if (init_backend(fd, &global_scope) != 0) {
-			REM_EXIT(cppfile, nccfile);
-		}
+		REM_EXIT(cppfile, nccfile);
+	}
 
-	#if USE_ZONE_ALLOCATOR
-		zalloc_create();
-		zalloc_init(Z_CONTROL, sizeof(struct control), 1, 0);
-		/*
-		 * 10/20/09: Disable label memory reclaimation for now. This is
-		 * needed since the switch label changes were made, or else the
-		 * ctrl->labels (ctrl_to_icode() for TOK_KEY_SWITCH) list will
-		 * end up containing a member that links to itself.
-		 */
-		zalloc_init(Z_LABEL, sizeof(struct label), 1, 1);
-		zalloc_init(Z_EXPR, sizeof(struct expr), 1, 0);  /* XXX doesn't work */
-		zalloc_init(Z_INITIALIZER, sizeof(struct initializer), 1, 1);
-		zalloc_init(Z_STATEMENT, sizeof(struct statement), 1, 1);
-		zalloc_init(Z_FUNCTION, sizeof(struct function), 1, 1);
-		zalloc_init(Z_ICODE_INSTR, sizeof(struct icode_instr), 1, 0);
-		zalloc_init(Z_ICODE_LIST, sizeof(struct icode_list), 1, 0);
-		zalloc_init(Z_VREG, sizeof(struct vreg), 1, 0);
-		zalloc_init(Z_STACK_BLOCK, sizeof(struct stack_block), 1, 0);
-		zalloc_init(Z_S_EXPR, sizeof(struct s_expr), 1, 0);
-		zalloc_init(Z_FCALL_DATA, sizeof(struct fcall_data), 1, 0);
+#if USE_ZONE_ALLOCATOR
+	zalloc_create();
+	zalloc_init(Z_CONTROL, sizeof(struct control), 1, 0);
+	/*
+	 * 10/20/09: Disable label memory reclaimation for now. This is
+	 * needed since the switch label changes were made, or else the
+	 * ctrl->labels (ctrl_to_icode() for TOK_KEY_SWITCH) list will
+	 * end up containing a member that links to itself.
+	 */
+	zalloc_init(Z_LABEL, sizeof(struct label), 1, 1);
+	zalloc_init(Z_EXPR, sizeof(struct expr), 1, 0);  /* XXX doesn't work */
+	zalloc_init(Z_INITIALIZER, sizeof(struct initializer), 1, 1);
+	zalloc_init(Z_STATEMENT, sizeof(struct statement), 1, 1);
+	zalloc_init(Z_FUNCTION, sizeof(struct function), 1, 1);
+	zalloc_init(Z_ICODE_INSTR, sizeof(struct icode_instr), 1, 0);
+	zalloc_init(Z_ICODE_LIST, sizeof(struct icode_list), 1, 0);
+	zalloc_init(Z_VREG, sizeof(struct vreg), 1, 0);
+	zalloc_init(Z_STACK_BLOCK, sizeof(struct stack_block), 1, 0);
+	zalloc_init(Z_S_EXPR, sizeof(struct s_expr), 1, 0);
+	zalloc_init(Z_FCALL_DATA, sizeof(struct fcall_data), 1, 0);
 /*	zalloc_init(Z_IDENTIFIER, sizeof(struct control), 1);*/
 #if FAST_SYMBOL_LOOKUP
 	zalloc_init(Z_FASTSYMHASH, sizeof(struct fast_sym_hash_entry), 1, 0);
@@ -615,7 +648,7 @@ do_ncc(char *cppfile, char *nccfile, int is_tmpfile) {
 		start_timer(&tv);
 	}
 
-	if (lex(input) != 0) {
+	if (lex_nwcc(create_input_file(input)) != 0) {
 		REM_EXIT(cppfile, nccfile);
 	}
 
@@ -890,12 +923,12 @@ main(int argc, char *argv[]) {
 					gnuc_version = n_xstrdup(n_optarg);
 				} else if (strcmp(options[idx].name, "cpp")
 					== 0) {
-					if (cpp != NULL) {
+					if (cpp_env_var != NULL) {
 						(void) fprintf(stderr, "-cpp "
 						"used more than once\n");
 						exit(EXIT_FAILURE);
 					}	
-					cpp = n_xstrdup(n_optarg);
+					cpp_env_var = n_xstrdup(n_optarg);
 				} else if (strcmp(options[idx].name, "xarch")
 					== 0) {
 					/* SunCC compatibility */
@@ -1095,10 +1128,22 @@ argv[0] = "new.c";
 		start_timer(&tv);
 	}
 
-	if (strcmp(p, "i") == 0) {
-		/* Already preprocessed */
+
+	if (determine_preprocessor() != 0) {
+		return EXIT_FAILURE;
+	}
+
+	if (strcmp(p, "i") == 0 || using_ucpp) {
+		/*
+		 * This file is already preprocessed (.i extension), or we're
+		 * going to preprocess it "on the fly" using ucpp. In both
+		 * cases no external preprocessor needs to be invoked
+		 */
 		tmp = n_xstrdup(nccfile);
 	} else {
+		/*
+		 * Invoke external preprocessor	
+		 */
 		is_tmpfile = 1;
 		if ((tmp = do_cpp(nccfile, cpp_args, cppind)) == NULL) {
 			return EXIT_FAILURE;

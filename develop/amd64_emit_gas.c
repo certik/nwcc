@@ -212,9 +212,6 @@ emit_comment(const char *fmt, ...) {
 
 static void
 emit_debug(struct icode_instr *ii) {
-	int		rc;
-	char		buf[1024];
-
 	/*
 	 * Print as comment to asm file
 	 */

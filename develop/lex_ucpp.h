@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 - 2010, Nils R. Weller
+ * Copyright (c) 2014, Nils R. Weller
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,26 +24,14 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef LEX_H
-#define LEX_H
+#ifndef LEX_UCPP_H
+#define LEX_UCPP_H
 
 #include <stdio.h>
 
-struct token;
 struct input_file;
 
-extern struct token	*toklist;
-extern int		lineno;
-extern const char	*cur_inc;
-extern int		cur_inc_is_std;
-
-void	set_input_file_fd(struct input_file *file, FILE *fd);
-void	set_input_file_buffer(struct input_file *file, const char *buffer);
-
-struct input_file *create_input_file(FILE *fd);
-
-void	print_token_list(struct token *);
-int	lex_nwcc(struct input_file *in);
+int lex_ucpp(struct input_file *in);
 
 #endif
 

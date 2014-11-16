@@ -77,6 +77,7 @@ if test -f cpp/nwcpp; then
 		|| ! cp -R cpp/include "$INSTALLDIR/nwcc/include"; then
 		echo "Warning: cannot install nwcpp"
 	fi
+	chmod a+rx "$INSTALLDIR/include"
 fi	
 
 cp snake "$INSTALLDIR/nwcc/bin"
@@ -94,6 +95,13 @@ cp dynextlibnwcc.o "$INSTALLDIR/nwcc/lib/dynlibnwcc.o"
 if test -f extlibnwcc64.o; then
 	cp extlibnwcc64.o "$INSTALLDIR/nwcc/lib/libnwcc64.o"
 	cp dynextlibnwcc64.o "$INSTALLDIR/nwcc/lib/dynlibnwcc64.o"
+fi
+
+
+# 07/26/12: For AMD64: x86 support (inconsistent to other archs for now)
+if test -f extlibnwcc32.o; then
+	cp extlibnwcc32.o "$INSTALLDIR/nwcc/lib/libnwcc32.o"
+	cp dynextlibnwcc32.o "$INSTALLDIR/nwcc/lib/dynlibnwcc32.o"
 fi
 
 # 12/13/07: This was missing :-( crt1 for Solaris ...

@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include "lex_ucpp.h"
 #include "token.h"
 #include "defs.h"
 #include "backend.h" /* 07/25/09: For backend->get_wchar_t() */
@@ -49,11 +50,11 @@
 #include "dwarf.h"
 #include "n_libc.h"
 
-static void print_token_list(struct token *list);
-
 const char	*cur_inc;
 int		cur_inc_is_std;
+int		lineno;
 
+static int	lex_traditional_cpp(struct input_file *in);
 
 #if 0
 static void
@@ -87,33 +88,88 @@ check_std_inc(const char *inc) {
 }	
 #endif
 
-int
-get_next_char(FILE *fd) {
-        int     ch = getc(fd);
 
-#if 0
-	int ch = EOF;
-char	*cur = lex_file_map + lex_chars_read;
-if (cur < lex_file_map_end) {
-	ch = *cur;
-	++lex_chars_read;
-} else {
-	--lex_chars_read;
-}	
-#endif
-	
-	if (!doing_fcatalog) {
-		if (ch == '\n') {
-			lex_line_ptr = lex_file_map + lex_chars_read;
-	                err_setlineptr(lex_line_ptr);
-       		}
+void
+set_input_file_fd(struct input_file *file, FILE *fd) {
+	file->fd = fd;
+}
+
+void
+set_input_file_buffer(struct input_file *file, const char *buffer) {
+	if (buffer == NULL) {
+		file->buf = file->cur_buf_ptr = file->buf_end = NULL;
+	} else {
+		file->buf = (char *)buffer;
+		file->cur_buf_ptr = file->buf;
+		file->buf_end = file->buf + strlen(file->buf);
+	}
+}
+
+
+struct input_file *
+create_input_file(FILE *fd) {
+	struct input_file		*ret = n_xmalloc(sizeof *ret);
+	static struct input_file	nullfile;
+	*ret = nullfile;
+
+	set_input_file_fd(ret, fd);
+	set_input_file_buffer(ret, NULL);
+
+	ret->fd = fd;
+	return ret;
+}
+
+
+
+
+
+int
+get_next_char(struct input_file *file) {
+        int     ch;
+
+	if (file->fd != NULL) {
+		/* Reading from file */
+		ch = getc(file->fd);
+
+		if (!doing_fcatalog) {
+			if (ch == '\n') {
+				lex_line_ptr = lex_file_map + lex_chars_read;
+		                err_setlineptr(lex_line_ptr);
+       			}
+		}
+	} else {
+		/* Reading from buffer */
+		if (file->cur_buf_ptr == file->buf_end) {
+			return EOF;
+		} else {
+			ch = *file->cur_buf_ptr;
+			++file->cur_buf_ptr;
+		}
 	}
         return ch;
 }
 
+void
+unget_char(int ch, struct input_file *file) {
+	if (file->fd != NULL) {
+		/* Reading from file */
+		ungetc(ch, file->fd);
+	} else {
+		/* Reading from buffer */
+		if (file->cur_buf_ptr == file->buf) {
+			/* Already at beginning (XXX Warning/error needed?) */
+			;
+		} else {
+			*file->cur_buf_ptr = ch;
+			--file->cur_buf_ptr;
+		}
+	}
+}
+
+
 
 static char *
-FGETS(char *buf, size_t bufsiz, FILE *in) {
+FGETS(char *buf, size_t bufsiz, struct input_file *in) {
 	int	ch;
 
 	while ((ch = FGETC(in)) != EOF) {
@@ -139,28 +195,15 @@ static int	nextch;
 		err_setlineptr(lex_line_ptr), nextch: nextch)
 #endif
 
-int
-lex(FILE *in) {
-	int		ch;
-	int		tmpi;
-	int		compound	= 0;
-	int		array		= 0;
-	int		parentheses	= 0;
-	int		lineno		= 0;
-	int		atline		= 0;
-	int		*dummyptr	= n_xmalloc(sizeof *dummyptr);
-	int		err;
-	char		buf[512];
-	char		buf2[256];
-	char		*tmpc;
-	char		*curfile = NULL;
-#if 0
-	int		curfileid = 0;
-#endif
-	int		is_wide_char = 0;
 
+int
+lex_nwcc(struct input_file *in) {
+	/*
+	 * Perform general initializations that are always needed regardless of
+	 * the preprocessor we're using
+	 */
 	if (/*options.showline*/ /*1*/ !doing_fcatalog) {
-		int	fd = fileno(in);
+		int	fd = fileno(in->fd);
 		struct stat	s;
 		if (fstat(fd, &s) == -1) {
 			perror("fstat");
@@ -200,6 +243,36 @@ lex(FILE *in) {
 	 * get_num_literal() can warn about overflow.
 	 */
 	init_max_digits();
+
+	/*
+	 * We now invoke the lexical analyzer
+	 */
+	if (using_ucpp) {
+		return lex_ucpp(in);
+	} else {
+		return lex_traditional_cpp(in);
+	}
+}
+
+static int
+lex_traditional_cpp(struct input_file *in) {
+	int		ch;
+	int		tmpi;
+	int		compound	= 0;
+	int		array		= 0;
+	int		parentheses	= 0;
+	int		atline		= 0;
+	int		*dummyptr	= n_xmalloc(sizeof *dummyptr);
+	int		err;
+	char		buf[512];
+	char		buf2[256];
+	char		*tmpc;
+	char		*curfile = NULL;
+#if 0
+	int		curfileid = 0;
+#endif
+	int		is_wide_char = 0;
+
 
 	while ((ch = FGETC(in)) != EOF) {
 		if (!doing_fcatalog) {
@@ -541,10 +614,10 @@ lex(FILE *in) {
 }
 
 
-static void 
+void 
 print_token_list(struct token *list) {
 	(void)list;
-#ifdef DEBUG
+#if defined DEBUG || USE_UCPP
 	puts("-------------------------------------------------------------");
 	for (; list /*->data*/ != NULL; list = list->next) {
 		if (list->type == TOK_OPERATOR) {
