@@ -63,21 +63,31 @@ if ! cp nwcc nwcc1 "$INSTALLDIR/nwcc/bin" \
 	echo "Cannot install nwcc"
 	exit 1
 fi
-if test -f cpp/nwcpp; then
+if test -f cpp/nwcpp || test -f ucpp/ucpp; then
 	if test -d "$INSTALLDIR/nwcc/include"; then
-		mv "$INSTALLDIR/bin/nwcpp" "$INSTALLDIR/bin/nwcpp.old"
+		if test -f cpp/nwcpp; then
+			mv "$INSTALLDIR/bin/nwcpp" "$INSTALLDIR/bin/nwcpp.old"
+		fi
 		if test -d "$INSTALLDIR/nwcc/include.old"; then
 			rm -rf "$INSTALLDIR/nwcc/include.old"
 		fi
+		
 		mv "$INSTALLDIR/nwcc/include" "$INSTALLDIR/nwcc/include.old"
 	fi
 
-	if ! cp cpp/nwcpp "$INSTALLDIR/nwcc/bin" \
-		|| ! ln -s "../nwcc/bin/nwcpp" "$INSTALLDIR/bin/nwcpp" \
-		|| ! cp -R cpp/include "$INSTALLDIR/nwcc/include"; then
-		echo "Warning: cannot install nwcpp"
+	if test -f cpp/nwcpp; then
+		if ! cp cpp/nwcpp "$INSTALLDIR/nwcc/bin" \
+			|| ! ln -s "../nwcc/bin/nwcpp" "$INSTALLDIR/bin/nwcpp"; then
+			echo "Warning: cannot install nwcpp"
+		fi
 	fi
-	chmod a+rx "$INSTALLDIR/include"
+
+	if  ! cp -R cpp/include "$INSTALLDIR/nwcc/include"; then
+		echo "Warning: cannot install header files"
+	else
+		chmod a+x "$INSTALLDIR/nwcc/include"
+		chmod -R a+r "$INSTALLDIR/nwcc/include"
+	fi
 fi	
 
 cp snake "$INSTALLDIR/nwcc/bin"
