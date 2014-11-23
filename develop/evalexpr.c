@@ -2257,7 +2257,9 @@ eval_const_expr(struct expr *ex, int extype, int *not_constant) {
 		}	
 		return -1;
 	} else {
-		rv_setrc_print(tv.value, tv.type->code, 0);
+		if (tv.type->code != TY_VOID) {
+			rv_setrc_print(tv.value, tv.type->code, 0);
+		}
 		dtv = n_xmalloc(sizeof tv);
 		memcpy(dtv, &tv, sizeof tv);
 		ex->const_value = dtv;

@@ -105,6 +105,9 @@ reset_text_color(void) {
 void
 print_source_line(const char *linep, const char *tokp, const char *tok, int as)
 {
+if (using_ucpp) {
+	return;
+}
 	if (linep != NULL) {
 		const char	*p;
 		size_t	len;

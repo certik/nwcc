@@ -160,8 +160,9 @@ unget_char(int ch, struct input_file *file) {
 			/* Already at beginning (XXX Warning/error needed?) */
 			;
 		} else {
-			*file->cur_buf_ptr = ch;
+			/**file->cur_buf_ptr = ch;*/
 			--file->cur_buf_ptr;
+			assert(*file->cur_buf_ptr == ch);
 		}
 	}
 }
@@ -636,7 +637,11 @@ print_token_list(struct token *list) {
 					*(int *)list->data);
 			}
 		} else if (IS_CONSTANT(list->type)) {
-			rv_setrc_print(list->data, list->type, 0);
+			if (list->ascii != NULL) {
+				printf("%s", list->ascii);
+			} else {
+				rv_setrc_print(list->data, list->type, 0);
+			}
 		} else if (IS_KEYWORD(list->type)) {
 			printf(" %s ", (char *)list->data);
 		} else if (list->type == TOK_IDENTIFIER) {
@@ -661,6 +666,7 @@ print_token_list(struct token *list) {
 		} else {
 			printf("Unknown - code %d\n", list->type);
 		}
+		putchar(' ');
 	}
 	puts("-------------------------------------------------------------");
 #endif

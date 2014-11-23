@@ -31,10 +31,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-/*
 #include <ctype.h>
 #include <assert.h>
-*/
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -42,15 +40,15 @@
 #include "defs.h"
 
 #if 0
-#include "backend.h" /* 07/25/09: For backend->get_wchar_t() */
 #include "numlimits.h"
 #include "misc.h"
 #include "debug.h"
-#include "zalloc.h"
-#include "cc1_main.h"
 #include "dwarf.h"
 #include "n_libc.h"
 #endif
+#include "cc1_main.h"
+#include "backend.h" /* 07/25/09: For backend->get_wchar_t() */
+#include "zalloc.h"
 #include "type.h"
 #include "error.h"
 #include "fcatalog.h"
@@ -102,6 +100,16 @@ initialize_ucpp(struct lexer_state *ls, FILE *in) {
 	  argument as an include path */
 /*	for (i = 1; i < argc; i ++) add_incpath(argv[i]);*/
 	add_incpath("/usr/local/nwcc/include");  /* XXXXXXXXXXXXXXXX */
+	add_incpath("/usr/include");  /* XXXXXXXXXXXXXXXX */
+	for (i = 0; cpp_args[i] != NULL; ++i ){
+		if (strncmp(cpp_args[i], "-I", 2) == 0) {
+			add_incpath(cpp_args[i]+2);
+		} else if (strncmp(cpp_args[i], "-D", 2) == 0) {
+			define_macro(ls, cpp_args[i]+2);
+		} else if (strncmp(cpp_args[i], "-U", 2) == 0) {
+			undef_macro(ls, cpp_args[i]+2);
+		}
+	}
 
 	/* step 10 -- we are a lexer and we want CONTEXT tokens */
 	enter_file(ls, ls->flags);
@@ -117,60 +125,11 @@ process_ucpp_token(struct ucpp_token *tok) {
         NONE,           /* whitespace */
         NEWLINE,        /* newline */
         COMMENT,        /* comment */
-        NUMBER,         /* number constant */
-        NAME,           /* identifier */
         BUNCH,          /* non-C characters */
         PRAGMA,         /* a #pragma directive */
         CONTEXT,        /* new file or #line */
-        STRING,         /* constant "xxx" */
-        CHAR,           /* constant 'xxx' */
-        SLASH,          /*      /       */
-        ASSLASH,        /*      /=      */
-        MINUS,          /*      -       */
-        MMINUS,         /*      --      */
-        ASMINUS,        /*      -=      */
-        ARROW,          /*      ->      */
-        PLUS,           /*      +       */
-        PPLUS,          /*      ++      */
-        ASPLUS,         /*      +=      */
-        LT,             /*      <       */
-        LEQ,            /*      <=      */
-        LSH,            /*      <<      */
-        ASLSH,          /*      <<=     */
-        GT,             /*      >       */
-        GEQ,            /*      >=      */
-        RSH,            /*      >>      */
-        ASRSH,          /*      >>=     */
-        ASGN,           /*      =       */
-        SAME,           /*      ==      */
-#ifdef CAST_OP
-        CAST,           /*      =>      */
-#endif
-        NOT,            /*      ~       */
-        NEQ,            /*      !=      */
-        AND,            /*      &       */
-        LAND,           /*      &&      */
-        ASAND,          /*      &=      */
-        OR,             /*      |       */
-        LOR,            /*      ||      */
-        ASOR,           /*      |=      */
-        PCT,            /*      %       */
-        ASPCT,          /*      %=      */
-        STAR,           /*      *       */
-        ASSTAR,         /*      *=      */
-        CIRC,           /*      ^       */
-        ASCIRC,         /*      ^=      */
-        LNOT,           /*      !       */
-        LBRA,           /*      {       */
-        RBRA,           /*      }       */
-        LPAR,           /*      (       */
-        RPAR,           /*      )       */
-        COMMA,          /*      ,       */
-        QUEST,          /*      ?       */
-        SEMIC,          /*      ;       */
-        COLON,          /*      :       */
-        DOT,            /*      .       */
-        MDOTS,          /*      ...     */
+
+
         SHARP,          /*      #       */
         DSHARP,         /*      ##      */
 
@@ -191,9 +150,6 @@ process_ucpp_token(struct ucpp_token *tok) {
         LAST_MEANINGFUL_TOKEN,          /* reserved words will go there */
 
         MACROARG,       /* special token for representing macro arguments */
-
-        UPLUS = CPPERR, /* unary + */
-        UMINUS          /* unary - */
 #endif
 
         switch (tok->type) {
@@ -243,12 +199,54 @@ process_ucpp_token(struct ucpp_token *tok) {
 		ident = get_identifier(*tok->name, &infile);
 		if (ident != NULL) {
 			store_token(&toklist, ident,
-				TOK_IDENTIFIER, lineno, NULL);
+				TOK_IDENTIFIER, lineno, n_xstrdup(tok->name));
 		}
 		break;
 		}
 	case CHAR: {
-		printf("%s ........\n", tok->name);
+		int	err = 0;
+		int	is_wide_char = 0;
+		char	*str_value = tok->name;
+		int	tmpi;
+
+		if (*str_value == 'L') {
+			/* Wide character string */
+			++str_value;
+			is_wide_char = 1;
+		}
+
+		set_input_file_buffer(&infile, str_value+1);
+		tmpi = get_char_literal(&infile, &err); /* XXX cross-comp */
+		if (!err) {
+			int	char_type;
+
+			/*
+			 * Character literals are really treated
+			 * like integer constants
+			 */
+			int	*tmpip = zalloc_buf(Z_CEXPR_BUF); /*n_xmalloc(16);*/ /* XXX */
+			if (tmpip == NULL) {
+				perror("malloc");
+				exit(EXIT_FAILURE);
+			}
+			*tmpip = tmpi;
+
+			if (is_wide_char) {
+				char_type = backend->get_wchar_t()->code;
+
+				/*
+				 * The assignment above assumes int,
+				 * i.e. 32bit on all supported
+				 * platforms
+				 */
+				assert(backend->get_sizeof_type(
+					backend->get_wchar_t(), NULL) == 4);
+			} else {
+				char_type = TY_INT;
+			}
+			store_token(&toklist, tmpip, char_type, lineno, n_xstrdup(tok->name));
+		}
+		is_wide_char = 0;
 		break;
 		}
 	case NUMBER: {
@@ -258,12 +256,78 @@ process_ucpp_token(struct ucpp_token *tok) {
 		n = get_num_literal(*tok->name, &infile);
 		if (n != NULL) {
 			store_token(&toklist, n->value,
-				n->type, lineno, NULL);
+				n->type, lineno, n_xstrdup(tok->name));
 		} else {
 			lexerror("Couldn't read numeric literal");
 		}
 		break;
 		}
+	case MDOTS: {
+		int	*tmp = n_xmalloc(sizeof *tmp);
+		*tmp = 0; 
+		store_token(&toklist, tmp, TOK_ELLIPSIS, lineno, NULL);
+		break;
+		}
+	case SLASH:          /*      /       */
+	case ASSLASH:        /*      /=      */
+	case MINUS:          /*      -       */
+	case MMINUS:         /*      --      */
+	case ASMINUS:        /*      -=      */
+	case ARROW:          /*      ->      */
+	case PLUS:           /*      +       */
+	case PPLUS:          /*      ++      */
+	case ASPLUS:         /*      +=      */
+	case LT:             /*      <       */
+	case LEQ:            /*      <=      */
+	case LSH:            /*      <<      */
+	case ASLSH:          /*      <<=     */
+	case GT:             /*      >       */
+	case GEQ:            /*      >=      */
+	case RSH:            /*      >>      */
+	case ASRSH:          /*      >>=     */
+	case ASGN:           /*      =       */
+	case SAME:           /*      ==      */
+#ifdef CAST_OP
+	case CAST:           /*      =>      */
+#endif
+	case NOT:            /*      ~       */
+	case NEQ:            /*      !=      */
+	case AND:            /*      &       */
+	case LAND:           /*      &&      */
+	case ASAND:          /*      &=      */
+	case OR:             /*      |       */
+	case LOR:            /*      ||      */
+	case ASOR:           /*      |=      */
+	case PCT:            /*      %       */
+	case ASPCT:          /*      %=      */
+	case STAR:           /*      *       */
+	case ASSTAR:         /*      *=      */
+	case CIRC:           /*      ^       */
+	case ASCIRC:         /*      ^=      */
+	case LNOT:           /*      !       */
+	case COMMA:          /*      ,       */
+	case QUEST:          /*      ?       */
+	case COLON:          /*      :       */
+	case DOT:            /*      .       */
+        case UPLUS: /* unary + */
+        case UMINUS:          /* unary - */
+		{
+		int	*opval = n_xmalloc(sizeof *opval);
+		char	*optext = operators_name[tok->type];
+
+		set_input_file_buffer(&infile, optext+1);
+		*opval = get_operator(*optext, &infile, &optext); /* XXX cross-comp */
+		if (*opval == -1) {
+			lexerror("Invalid operator `%s'", optext);
+			free(opval);
+		} else {
+			store_token(&toklist, opval, TOK_OPERATOR, lineno, tok->name);
+		}
+		break;
+		}
+	default:
+		printf("Unhandled token, type %d, value %s\n", tok->type, tok->name? tok->name: "?");
+		break;
 	}
 
 	return NULL;
@@ -312,8 +376,10 @@ lex_ucpp(struct input_file *in) {
                         }
 			*/
                 } else if (ls.ctok->type == CONTEXT) {
+#if 0
                         printf("new context: file '%s', line %ld\n",
                                 ls.ctok->name, ls.ctok->line);
+#endif
 
 
 			/*
@@ -333,13 +399,17 @@ lex_ucpp(struct input_file *in) {
 			lineno = ls.ctok->line;
 
                 } else if (ls.ctok->type == NEWLINE) {
+#if 0
                         printf("[newline]\n");
+#endif
 			++lineno;
                 } else {
+#if 0
                         printf("line %ld: <%2d>  `%s'\n", ls.ctok->line,
                                 ls.ctok->type,
                                 STRING_TOKEN(ls.ctok->type) ? ls.ctok->name
                                 : operators_name[ls.ctok->type]);
+#endif
 
 			process_ucpp_token(ls.ctok);
                 }
@@ -351,49 +421,6 @@ lex_ucpp(struct input_file *in) {
 
 
 #if 0
-	while ((ch = FGETC(in)) != EOF) {
-		if (!doing_fcatalog) {
-			lex_tok_ptr = lex_file_map + lex_chars_read;
-		} else {
-			lex_tok_ptr = NULL;
-		}
-
-		switch (ch) {
-		case '#':
-			if (write_fcat_flag) {
-				/* Must be comment */
-				while ((ch = FGETC(in)) != EOF && ch != '\n')
-					;
-				++lineno;
-				continue;
-			}
-
-			/* Must be processor file indicator or #pragma */
-
-			if ((ch = FGETC(in)) == EOF) {
-				continue;
-				/* Must be pragma */
-				UNGETC(ch, in);
-				do {
-					ch = FGETC(in);
-				} while (ch != EOF && ch != '\n');
-#if 0
-				(void) fgets(buf, sizeof buf, in); 
-#endif
-				continue;
-			}
-
-			/* Must be preprocessor file name */
-#if 0 
-			if (fgets(buf, sizeof buf, in) == NULL) {
-#endif
-			if (FGETS(buf, sizeof buf, in) == NULL) {
-				lexerror("Unexpected end of file - "
-					"expected preprocessor output.");
-				return 1;
-			}
-
-
 			if (ch == 'i' && strncmp(buf, "dent", 4) == 0) {
 				/*
 				 * 08/12/08: Accept but ignore (even correctness
@@ -401,217 +428,10 @@ lex_ucpp(struct input_file *in) {
 				 */
 				continue;
 			}
-			if (sscanf(buf, " %d \"%256[^\"]\" %*d", &atline, buf2)
-				!= 2) {
-#ifndef __sgi
-				lexerror("Bad preprocessor directive format.");
-#else
-				continue;
 #endif
-			}
-
-			/*
-			 * Note that curfile is still referred to by tokens -
-			 * don't free
-			 */
-			curfile = strdup(buf2);
-			if (gflag) {
-				unimpl();
-				/*curfileid = dwarf_put_file(curfile);*/
-			}
-			if (*curfile
-				&& curfile[strlen(curfile) - 1] == 'c') {
-				cur_inc = NULL;
-				cur_inc_is_std = 0;
-			}	
-
-			/* Processing new file */
-			err_setfile(curfile);
-			token_setfile(curfile);
-
-			lineno = atline;
-
-			break;
-
-		case '\'':
-			err = 0;
-			tmpi = get_char_literal(in, &err); /* XXX cross-comp */
-			if (!err) {
-				int	char_type;
-
-				/*
-				 * Character literals are really treated
-				 * like integer constants
-				 */
-				/*int	*tmpip = malloc(sizeof(int));*/
-				int	*tmpip = zalloc_buf(Z_CEXPR_BUF); /*n_xmalloc(16);*/ /* XXX */
-				if (tmpip == NULL) {
-					perror("malloc");
-					exit(EXIT_FAILURE);
-				}
-				*tmpip = tmpi;
-
-				if (is_wide_char) {
-					char_type = backend->get_wchar_t()->code;
-
-					/*
-					 * The assignment above assumes int,
-					 * i.e. 32bit on all supported
-					 * platforms
-					 */
-					assert(backend->get_sizeof_type(
-						backend->get_wchar_t(), NULL) == 4);
-				} else {
-					char_type = TY_INT;
-				}
-				store_token(&toklist, tmpip, char_type, lineno, NULL);
-			}
-			is_wide_char = 0;
-			break;
-		case '.':
-			/*
-			 * This might be either a structure / union
-			 * indirection operator or a floating point
-			 * value like .5 (equivalent to 0.5). If the
-			 * latter is the case, call get_num_literal(),
-			 * else fall through
-			 */
-			if ((tmpi = FGETC(in)) == EOF) {
-				lexerror("Unexpected end of file.");
-				return 1;
-			}
-			UNGETC(tmpi, in);
-			if (isdigit((unsigned char)tmpi)) {
-				struct num	*n = get_num_literal(ch, in);
-
-#if 0
-				if (standard == C89 && IS_LLONG(n->type)) {
-					error("`long long' constants are not "
-						"available in C89 (don't use"
-						"-ansi or -std=c89");	
-				}	
-#endif
-				if (n != NULL) {
-					store_token(&toklist, n->value,
-						n->type, lineno, NULL);
-				}
-				break;
-			}
-			/* FALLTHRU */
-		default:
-			if (ch == '?') {
-				int	trig;
-				/* Might be trigraph */
-				if ((trig = get_trigraph(in)) == -1) {
-					/*
-					 * Not a trigraph - LOOKUP_OP()
-					 * will catch the ``?''
-					 */
-					;
-				} else if (trig == 0) {
-					/*
-					 * The source file contained a ``??''
-					 * that isn't isn't part of a trigraph -
-				 	 * this is a syntax error, since it 
-					 * cannot be the conditional operator
-				  	 */
-					lexerror("Syntax error at ``?\?''");
-				} else {
-					/* Valid trigraph! */
-					UNGETC(trig, in);
-					continue;
-				}
-			}
-					
-			if (LOOKUP_OP(ch)) {
-				int	*ptri = malloc(sizeof(int));
-				char	*ascii = NULL;
-				int	is_ellipsis = 0;
-
-				if (ch == '.') {
-					int	ch2 = FGETC(in);
-					if (ch2 != '.') {
-						UNGETC(ch2, in);
-					} else {
-						int	ch3 = FGETC(in);
-						if (ch3 != '.') {
-							/*
-							 * We've already read
-							 * two dots, so there
-							 * is no return. Two
-							 * dots can never be
-							 * valid anyway
-							 */
-							lexerror("Syntax error at `..'");
-						} else {
-							is_ellipsis = 1;
-						}
-					}
-				}
-
-				if (is_ellipsis) {
-					*ptri = 0;
-					store_token(&toklist, ptri,
-						TOK_ELLIPSIS, lineno, ascii);
-				} else {	
-					if (ptri == NULL) {
-						perror("malloc");
-						exit(EXIT_FAILURE);
-					}
-					tmpi = get_operator(ch, in, &ascii);
-					if (tmpi != -1) {
-						*ptri = tmpi;
-						store_token(&toklist, ptri,
-							TOK_OPERATOR, lineno, ascii);
-					} else {
-						lexerror("INVALID OPERATOR!!!");
-					}
-				}
-			} else if (isdigit((unsigned char)ch)) {
-				struct num	*n = get_num_literal(ch, in);
-				if (n != NULL) {
-					store_token(&toklist, n->value,
-						n->type, lineno, NULL);
-				} else {
-					lexerror("Couldn't read numeric literal");
-				}
-			} else if (isalpha((unsigned char)ch) || ch == '_') {
-				if (ch == 'L') {
-					int	tmpch;
-
-					tmpch = FGETC(in);
-					if (tmpch != EOF) {
-						UNGETC(tmpch, in);
-						if (tmpch == '\'' || tmpch == '"') {
-							/*
-							 * Long constant - treat like
-							 * ordinary one
-							 *
-							 * 07/24/09: Now we do
-							 * distinguish!
-							 */
-							is_wide_char = 1;
-							continue;
-						}
-					}
-				}
-					
-				tmpc = get_identifier(ch, in);
-				if (tmpc != NULL) {
-					store_token(&toklist, tmpc,
-						TOK_IDENTIFIER, lineno, NULL);
-				}
-			} else {
-				lexerror("Unknown token - %c (code %d)\n", ch, ch);
-			}
-		}
-	}
-#if 0
-	store_token(&toklist, NULL, 0, lineno);
-#endif
-#endif
-	print_token_list(toklist);
-	return errors =  1 ; /* XXX */
+	/*print_token_list(toklist);*/
+	return errors;
 }
 
 #endif /* USE_UCPP */
+

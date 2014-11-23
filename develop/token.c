@@ -777,8 +777,7 @@ get_operator(int ch, struct input_file *f, char **ascii) {
 		++i;
 	}
 
-	lexerror("Unexpected end of file.");
-	return -1;
+	return latest_valid;
 }
 
 
@@ -814,7 +813,7 @@ rv_setrc_print(void *ptr, int type, int verbose) {
 		printf("%s %Lf\n",
 			verbose?"Read long double":"", *(long double *)ptr);
 	}
-#elif USE_UCPP
+#elif 0  /*USE_UCPP*/
 	/* XXX not cross-compilation clean */
 	if (type == TY_FLOAT) {
 		struct ty_float	*tf = ptr;
@@ -1169,6 +1168,9 @@ get_num_literal(int firstch, struct input_file *f) {
 				UNGETC(ch, f);
 				++digits_read;
 			}
+		} else {
+			/* Just 0 */
+			++digits_read;
 		}
 	} else if (firstch == '.') {
 		/* Number like .5 (equivalent to 0.5) */
@@ -1333,148 +1335,6 @@ get_num_literal(int firstch, struct input_file *f) {
 
 
 			return complete_num_literal(p, bin_exp, digits_read, octal_flag, hexa_flag, fp_flag, float_flag, hex_float, bin_exp_idx, long_flag, unsigned_flag);
-
-#if 0
-			if (digits_read == 0 && !octal_flag && !fp_flag) {
-				lexerror("Constant with no digits");
-			} else if (fp_flag == 0) {
-				/* 
-				 * Perform range check, adjust type of
-				 * constant as needed
-				 */
-				real_type = range_check(p, hexa_flag,
-					octal_flag, unsigned_flag, long_flag,
-					digits_read);
-				if (real_type == -1) {
-					free(p);
-					return NULL;
-				} else if (real_type != 0)  {
-					/* 0 means unchanged */
-					if (IS_LLONG(real_type)
-						&& long_flag != 2) {
-						/*
-						 * The number wasn't requested
-						 * to be of type ``long long'',
-						 * but has to be! This may not
-						 * be intended
-						 */
-						lexwarning("Number `%s' is too "
-							"large for `unsigned "
-							"long'", p);
-					}	
-					if (real_type == TY_ULONG
-						|| real_type == TY_ULLONG
-						|| real_type == TY_UINT) {
-						unsigned_flag = 1;
-					}
-					if (real_type == TY_LONG
-						|| real_type == TY_ULONG) {
-						long_flag = 1;
-					} else if (real_type == TY_LLONG
-						|| real_type == TY_ULLONG) {
-						long_flag = 2;
-					}
-				} else {
-					/*
-					 * The user-specified type is
-					 * sufficient
-					 */
-					if (unsigned_flag) {
-						if (long_flag == 1) {
-							real_type = TY_ULONG;
-						} else if (long_flag == 2) {
-							real_type = TY_ULLONG;
-						} else {
-							real_type = TY_UINT;
-						}
-					} else {
-						/* signed */
-						if (long_flag == 1) {
-							real_type = TY_LONG;
-						} else if (long_flag == 2) {
-							real_type = TY_LLONG;
-						} else {
-							real_type = TY_INT;
-						}
-					}
-				}	
-			} else {
-				/* Floating point */
-				if (float_flag) {
-					real_type = TY_FLOAT;
-				} else if (long_flag) {
-					real_type = TY_LDOUBLE;
-				} else {
-					real_type = TY_DOUBLE;
-				}	
-			}	
-
-			if (hex_float) {
-				if (bin_exp_idx == 0) {
-					lexerror("Hexadecimal floating point "
-						"constant misses exponent");
-					return NULL;
-				}
-					
-				rc = n_xmalloc(sizeof *rc);
-#ifndef PREPROCESSOR
-				rc->value = n_xmalloc(backend->get_sizeof_type(
-					make_basic_type(real_type), NULL));
-#else
-				rc->value = n_xmalloc(cross_get_sizeof_type(
-					make_basic_type(real_type)));
-#endif
-				bin_exp[bin_exp_idx] = 0;
-				rc->type = real_type;
-#ifndef PREPROCESSOR
-				if (parse_hexfloat_const(rc, p, bin_exp) == 0) {
-					put_float_const_list(rc);
-				}
-#endif
-			} else {	
-				rc = cross_scan_value(p, real_type,
-					hexa_flag, octal_flag, fp_flag);
-			}
-#ifdef DEBUG
-			printf("(%d digits)\n", digits_read);
-#endif
-			if (fp_flag /*&& backend->need_floatconst*/) {
-#if 0
-				struct ty_float		*fc;
-				static unsigned long	count;
-
-				fc = n_xmalloc(sizeof *fc);
-				fc->count = count++;
-				fc->num = rc;
-				fc->next = float_const;
-				float_const = fc;
-#endif
-#ifndef PREPROCESSOR
-			} else if (long_flag
-				&& backend->abi == ABI_POWER64) {
-				/* 64bit native long long/long! */
-				put_ppc_llong(rc);
-#endif
-			}
-
-#ifdef PREPROCESSOR
-			rc->ascii = p;
-#endif
-			if (IS_LLONG(real_type)) {
-				static int warned;
-				if (!warned) {
-					if (stdflag == ISTD_C89) {
-						lexwarning("ISO C90 has "
-						"no `long long' constants "
-						"(suppressing further "
-						"warnings of this kind)");
-						warned = 1;
-					}
-				}
-			}
-
-			return rc;
-#endif
 		}
 	}
 

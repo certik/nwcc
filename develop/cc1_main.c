@@ -123,6 +123,11 @@ int	save_bad_translation_unit_flag;
 int	using_ucpp;
 int	using_nwcpp;
 
+
+char			*cpp_args[128];
+
+
+
 static char	*cpp_progname;
 static char	*cpp_progflag = "-E";
 
@@ -695,7 +700,10 @@ do_ncc(char *cppfile, char *nccfile, int is_tmpfile) {
 	}
 
 	/* destroy_toklist(&toklist); */
-	fclose(input);
+
+	if (!using_ucpp) {	/* ucpp already closes the file in free_lexer_state() apparently */
+		fclose(input);
+	}
 	if (is_tmpfile) {
 		if (!save_bad_translation_unit_flag) {
 			remove(cppfile);
@@ -763,7 +771,6 @@ main(int argc, char *argv[]) {
 	char			*target_str = NULL;
 	char			*abi_str = NULL;
 	char			*sys_str = NULL;
-	char			*cpp_args[128];
 	int			cppind = 0;
 	int			is_tmpfile = 0;
 	int			nostdincflag = 0;

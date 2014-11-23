@@ -32,5 +32,8 @@ extern int	write_fcat_flag;
 extern int	using_ucpp;
 extern int	using_nwcpp;
 
+
+extern char	*cpp_args[];
+
 #endif
 
