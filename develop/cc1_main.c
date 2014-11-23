@@ -268,6 +268,17 @@ determine_preprocessor(void) {
 
 
 
+
+static char *generated_asm_file;
+static char *generated_cpp_file;
+
+static void
+remove_garbage(void) {
+	if (errors) {
+		remove(generated_asm_file);
+	}
+}
+
 static char *
 do_cpp(char *file, char **args, int cppind) {
 	/* XXX FILENAME_MAX is broken on HP-UX */
@@ -390,6 +401,7 @@ do_cpp(char *file, char **args, int cppind) {
 		if (fd == NULL) {
 			return NULL;
 		}
+		generated_cpp_file = output_path;
 	}
 
 	arch = "";
@@ -511,16 +523,6 @@ do_cpp(char *file, char **args, int cppind) {
 	return output_path;
 }
 
-
-static char *garbage;
-
-static void
-remove_garbage(void) {
-	if (errors) {
-		remove(garbage);
-	}
-}
-
 static int	timing_cpp;
 
 static int
@@ -546,7 +548,7 @@ do_ncc(char *cppfile, char *nccfile, int is_tmpfile) {
 		nccfile = p+1;
 	}
 
-	garbage = nccfile;
+	generated_asm_file = nccfile;
 	atexit(remove_garbage);
 	if (inits_done == 0) {
 		init_keylookup();
@@ -561,6 +563,15 @@ do_ncc(char *cppfile, char *nccfile, int is_tmpfile) {
 		if (input == NULL) {
 			perror(cppfile);
 			return EXIT_FAILURE;
+		}
+		if (generated_cpp_file == cppfile) {
+			/*
+			 * 20141123: What we just opened is a preprocessor
+			 * output file. It can now be removed. This should
+			 * fix a longstanding problem with stale .cpp files
+			 * left in /var/tmp
+			 */
+			(void) remove(generated_cpp_file);
 		}
 	}
 	
